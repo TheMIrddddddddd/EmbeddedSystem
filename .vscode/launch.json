@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "name": "GD32F470 Debug (OpenOCD)",
+            "cwd": "${workspaceRoot}",
+            "executable": "MDK/build/IndustrialEmbedded/IndustrialEmbedded.elf",
+            "servertype": "openocd",
+            "gdbPath": "C:/ST/STM32CubeCLT_1.20.0/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+            "device": "GD32F470VE",
+            "interface": "swd",
+            "serverArgs": [
+                "-s",
+                "MDK",
+                "-f",
+                "interface/cmsis-dap.cfg",
+                "-f",
+                "target/gd32f470.cfg"
+            ],
+            "svdFile": "MDK/svd/GD32F4xx.svd",
+            "runToEntryPoint": "main",
+            "showDevDebugOutput": "none"
+        }
+    ]
+}

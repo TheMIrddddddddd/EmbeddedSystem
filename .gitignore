@@ -13,4 +13,5 @@ MDK/interface/
 MDK/target/
 
 # IDE 配置
-.vscode/
+.vscode/*
+!.vscode/launch.json
