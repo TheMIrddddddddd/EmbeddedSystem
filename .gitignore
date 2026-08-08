@@ -7,6 +7,7 @@ MDK/*.uvguix*
 MDK/build/
 MDK/.eide/
 MDK/.cmsis/
+MDK/.vscode/
 
 # 调试器备份文件
 MDK/interface/
