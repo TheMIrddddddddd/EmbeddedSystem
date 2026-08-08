@@ -6,6 +6,7 @@ MDK/*.uvguix*
 # EIDE 编译产物
 MDK/build/
 MDK/.eide/
+MDK/.cmsis/
 
 # 调试器备份文件
 MDK/interface/
