@@ -1,0 +1,15 @@
+# Keil 编译产物
+MDK/Objects/
+MDK/Listings/
+MDK/*.uvguix*
+
+# EIDE 编译产物
+MDK/build/
+MDK/.eide/
+
+# 调试器备份文件
+MDK/interface/
+MDK/target/
+
+# IDE 配置
+.vscode/
