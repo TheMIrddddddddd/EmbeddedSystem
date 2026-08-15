@@ -104,7 +104,60 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← DMA/定时器通道静态表 + �
 | `boards/gjl/h743mini/src/timer_config.cpp` | `constexpr` 通道静态表:每通道 = {定时器,通道,GPIO},编译期定死 |
 | `boards/gjl/h743mini/src/spi.cpp` | 总线/设备/CS 静态表 + `validateSPIConfig()` 编译期校验 |
 
-**卡点(阻塞项):** 引脚分配需要**板子原理图**。文档已锁定的部分:LED1~6 = PD8~PD13(连续引脚)、DAC = PA4、CH1 采集 = PC1、SDIO = PC8~PC12 + PD2;未定的:CH0 电位器引脚、USART0/USART1 引脚与 DE 脚、SPI Flash 引脚、I2C OLED 引脚、6 个按键引脚。
+**资料状态:** 已取得 `CIMC-IHD-v04` 西门子原理图 PDF,并结合板级引脚确认完成本阶段的 GPIO 初始冻结。以下表格只冻结“板级网络 ↔ MCU 引脚”关系;GPIO 复用编号(AF)、DMA 通道、NVIC 优先级、实际焊接连通性仍需分别依据 GD32F470VE 手册、资源冲突检查和断电通断测试确认。原理图中的 SPI Flash 器件标注为 `GD25Q40E`,而其他项目文档曾写作 `GD25Q16`,容量/器件型号需在 M0 末尾单独消歧。
+
+### M0 当前 GPIO/外设映射表
+
+> 来源: `CIMC-IHD-v04` 西门子原理图第 1~4 页 + 用户于 2026-08-15 提供的板级引脚确认。`待 AF/DMA/NVIC` 不表示引脚未确定,而表示 MCU 复用编号和中断资源尚未完成冻结;`待板测` 表示原理图/软件命名已经明确,但尚未对实物做断电通断验证。
+
+#### MCU GPIO 与板级外设
+
+| 功能 | GD32F470 GPIO | 板级网络/器件 | 方向/电气语义 | 连接器或路由 | 来源/状态 |
+|---|---|---|---|---|---|
+| LED1~LED6 | `PD8~PD13` | `LED1~LED6` | GPIO 输出;当前软件定义为高电平点亮、低电平熄灭 | H2: 6→LED1、5→LED2、4→LED3、3→LED4、2→LED5、1→LED6 | 原理图 P2 + `User/src/main.c`; 待板测 |
+| KEY1~KEY6 | `PE15、PE13、PE11、PE9、PE7、PB0` | `FUN_KEY1~FUN_KEY6` | GPIO 输入;外部 10k 上拉到 3V3,按下接 DGND,有效低 | H3: 6→KEY1、5→KEY2、4→KEY3、3→KEY4、2→KEY5、1→KEY6 | 原理图 P1/P2 + 用户确认; 待 AF/板测 |
+| ADC CH0 | `PC0` | `ADC`; 电位器 VR1 | 模拟输入 | VR1 滑动端 → `ADC` | 原理图 P1/P2 + 用户确认; 待 ADC 通道号 |
+| DAC CH1 | `PA4` | DAC 输出 | 模拟输出 | 设计闭环为 `PA4` → 外部跳线 → `PC1` | 原理图 P1 + 项目规格; 待板测 |
+| ADC CH1 | `PC1` | CH1 采集输入 | 模拟输入 | 接收 DAC `PA4` 回读信号 | 原理图 P1 + 项目规格; 待 ADC 通道号 |
+| SD DAT0 | `PC8` | `SD_DAT0` | SDIO 4-bit 双向数据 | TF 卡 DAT0 | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
+| SD DAT1 | `PC9` | `SD_DAT1` | SDIO 4-bit 双向数据 | TF 卡 DAT1 | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
+| SD DAT2 | `PC10` | `SD_DAT2` | SDIO 4-bit 双向数据 | TF 卡 DAT2 | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
+| SD DAT3 | `PC11` | `SD_DAT3` | SDIO 4-bit 双向数据/片选复用网络 | TF 卡 DAT3/CS | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
+| SD CLK | `PC12` | `SD_CLK` | SDIO 时钟输出 | TF 卡 CLK | 原理图 P1/P2 + 用户确认; 待 AF |
+| SD CMD | `PD2` | `SD_CMD` | SDIO 命令双向线 | TF 卡 CMD/DI | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
+| SD card detect | `PE2` | `SD_CD` | GPIO 输入;原理图有 10k 上拉,插卡检测按低有效理解 | TF 卡 CD | 原理图 P1/P2 + 用户确认; 待极性/板测 |
+| USART1 TX | `PA2` | `USART1_TX` | USART 发送 | H6 中间左侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; 待 AF/DMA |
+| USART1 RX | `PA3` | `USART1_RX` | USART 接收 | H6 中间右侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; 待 AF/DMA |
+| RS485 方向控制 | `PA1` | `485_CS` | GPIO 输出;图中同时连接 MAX3485 `RE#`/`DE`,低为接收、高为发送 | MAX3485 U12 | 原理图 P1/P4 + 用户确认; 待极性/板测 |
+| USART2 TX | `PB10` | `USART2_TX` | 3.3V TTL USART 发送 | CN1 pin 2 | 原理图 P1/P4 + 用户确认; 待 AF |
+| USART2 RX | `PB11` | `USART2_RX` | 3.3V TTL USART 接收 | CN1 pin 3 | 原理图 P1/P4 + 用户确认; 待 AF |
+| USART0 TX | `PA9` | `USART0_TX` | 3.3V TTL USART 发送 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; 待 AF/DMA |
+| USART0 RX | `PA10` | `USART0_RX` | 3.3V TTL USART 接收 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; 待 AF/DMA |
+| OLED DATA | `PB9` | `OLED_DAT` | OLED 数据线;项目技术栈按 I2C OLED 规划 | OLED1 SDA/DAT | 原理图 P1/P2 + 用户确认; 待 I2C 实例/AF |
+| OLED CLK | `PB8` | `OLED_CLK` | OLED 时钟线;项目技术栈按 I2C OLED 规划 | OLED1 SCL/CLK | 原理图 P1/P2 + 用户确认; 待 I2C 实例/AF |
+| SPI Flash MOSI | `PB15` | `SPI_MOSI` | SPI 主出从入 | GD25Q40E U4 SI/IO0 | 原理图 P1/P2 + 用户确认; 待 SPI 实例/AF |
+| SPI Flash MISO | `PB14` | `SPI_MISO` | SPI 主入从出 | GD25Q40E U4 SO/IO1 | 原理图 P1/P2 + 用户确认; 待 SPI 实例/AF |
+| SPI Flash SCK | `PB13` | `SPI_SCK` | SPI 时钟输出 | GD25Q40E U4 CLK | 原理图 P1/P2 + 用户确认; 待 SPI 实例/AF |
+| SPI Flash CS | `PB12` | `FLASH_CS` | GPIO 输出,低有效片选 | GD25Q40E U4 CS | 原理图 P1/P2 + 用户确认; 待板测 |
+
+#### 串口跳线和外部接口约定
+
+| 接口/跳线 | 编号或引脚 | 连接关系 | 用途 |
+|---|---|---|---|
+| H6 | `1-3`、`2-4` | `485_RX↔USART1_TX(PA2)`、`485_TX↔USART1_RX(PA3)` | USART1 选择 RS485;不可与 RS232 跳线同时安装 |
+| H6 | `3-5`、`4-6` | `USART1_TX(PA2)↔232_RX`、`USART1_RX(PA3)↔232_TX` | USART1 选择 RS232;不可与 RS485 跳线同时安装 |
+| H7 | `1-3`、`2-4` | `USB_RX↔USART0_TX(PA9)`、`USB_TX↔USART0_RX(PA10)` | 板载 CH340C 连接 USART0 CLI |
+| CN1 | 1/2/3 | `1=DGND、2=USART2_TX、3=USART2_RX` | 外部 3.3V TTL USART2 |
+| CN2 | 1/2/3 | `1=DGND、2=485_A、3=485_B` | 外部 RS485 总线 |
+| CN3 | 1/2/3 | `1=DGND、2=232_OUT_TX、3=232_OUT_RX` | 外部 RS232 总线,经 SP3232 |
+
+#### 当前 M0 未闭合项
+
+- 依据 GD32F470VE 数据手册补齐每个复用引脚的 AF 编号、USART/I2C/SPI/SDIO 实例和 ADC 通道号。
+- 依据芯片 DMA 请求映射表完成 ADC1、USART0-RX、USART1-RX、SDIO 的控制器/通道分配,并确认 DMA 缓冲区放在普通 SRAM 而不是 TCM。
+- 依据 NVIC 设计完成 USART IDLE、DMA、EXTI、RTC、SDIO 和 SysTick 的优先级表。
+- 断电使用万用表核对 H6/H7 跳线方向、CN1/CN2/CN3 针脚编号、LED/KEY/TF/Flash/OLED 实物连通性。
+- 解决原理图 `GD25Q40E` 与项目规格 `GD25Q16` 的器件型号和容量冲突;在冲突解决前,不得据此确定外部 Flash 容量、擦除布局或驱动型号。
 
 **验收关卡:** 资源表完成且**无冲突**(DMA 通道互斥、EXTI 线号互斥、NVIC 优先级分层、Flash 边界 4KB 页对齐、`fmc_page_erase()` 适用)。
 
