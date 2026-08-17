@@ -31,18 +31,20 @@
 
 | 自检项 | 通过标准 | 失败表现 |
 |---|---|---|
-| Flash | 能读取到外部 Flash ID(GD25Q16) | Flash ID 读取失败 |
+| Flash | 能读取到外部 Flash ID(GD25Q40E,预期 JEDEC ID=0xC84013) | Flash ID 读取失败 |
 | TF Card | TF 卡存在且能挂载 | 未检测到 TF 卡 |
 | OLED | I2C 通信正常 | OLED 初始化失败 |
 | RTC | 时间有效(非 2000 年 1 月 1 日 0 点默认值) | RTC 未初始化 |
 
 **操作示例:**
 
+> 以下 Flash ID 为 GD25Q40E 的设计预期值,实际板级 ID 需在 SPI 驱动完成后读回确认。
+
 ```
 串口输入: test
 串口返回:
 === System Test ===
-Flash ID   : 0xEF4015  [PASS]
+Flash ID   : 0xC84013  [PASS]
 TF Card    : Found     [PASS]
 OLED       : OK        [PASS]
 RTC        : 2026-08-09 12:30:45 [PASS]
@@ -55,7 +57,7 @@ RTC        : 2026-08-09 12:30:45 [PASS]
 串口输入: test
 串口返回:
 === System Test ===
-Flash ID   : 0xEF4015  [PASS]
+Flash ID   : 0xC84013  [PASS]
 TF Card    : Not Found [FAIL]
 OLED       : OK        [PASS]
 RTC        : 2026-08-09 12:30:45 [PASS]
@@ -230,13 +232,13 @@ protocol_mode=0 alarm_mode=2(01 主动上报 / 02 被动存储,默认 02)
 
 | 存储域 | 存放内容 | 访问方 |
 |---|---|---|
-| **外部 SPI Flash(GD25Q16)** | 业务配置(变比/阈值/采样周期/设备ID/波特率/协议模式)、告警记录(最近 10 条)、上电次数计数 | 仅 APP 的 StorageTask(Persistence Service 单一执行上下文) |
+| **外部 SPI Flash(GD25Q40E,4Mbit/512KB)** | 业务配置(变比/阈值/采样周期/设备ID/波特率/协议模式)、告警记录(最近 10 条)、上电次数计数;后续可选保存升级包/备份镜像 | APP 的 StorageTask 负责参数/告警;Bootloader 仅在升级状态机阶段按需独占访问升级包/备份镜像 |
 | **内部 Flash 参数区(0x08010000~0x08011FFF,2 × 4KB 独立页:slot A / slot B)** | 升级状态(升级标志)、固件元数据(双槽记录)、试运行状态(TRIAL/CONFIRMED)、回滚计数 | Bootloader 与 APP 共享 |
 
 **规则:**
-- 业务参数走外部 Flash(容量大、擦写不占用内部空间);升级状态必须走内部参数区(Bootloader 在 APP 未运行时也能读写)
+- 业务参数走外部 Flash(独立存储、擦写不占用内部空间);Bootloader 和 App 的可执行映像仍在 MCU 内部 Flash;升级状态必须走内部参数区(Bootloader 在 APP 未运行时也能读写)
 - APP 运行配置与升级状态互不干扰;升级固件不会触碰业务参数区
-- ControlTask/AlarmTask 只能向 StorageTask 发送持久化请求,不得直接擦除 GD25Q16、执行 Flash KV GC 或持有 SPI 锁
+- ControlTask/AlarmTask 只能向 StorageTask 发送持久化请求,不得直接擦除 GD25Q40E、执行 Flash KV GC 或持有 SPI 锁;Bootloader 访问外部 Flash 只允许发生在升级状态机的明确阶段
 
 ### 5、协议模式设置
 
@@ -1046,7 +1048,9 @@ NORMAL
 
 ## 十二、固件升级(Bootloader)
 
-### 1、Flash 分区(强制)
+### 1、内部 Flash 分区(当前候选方案)
+
+> Bootloader 和 App 都在 GD32F470 内部 Flash 中运行。下面的地址用于 M1 双工程的初始布局，必须等链接脚本、镜像大小和跳转实测后再定稿；GD25Q40E 不作为复位后的直接执行区。
 
 | 区域 | 起始地址 | 结束地址 | 大小 |
 |---|---|---|---|
@@ -1057,7 +1061,7 @@ NORMAL
 | App 备份区 | 0x08032000 | 0x08051FFF | 128KB |
 | 固件暂存区 | 0x08052000 | 0x08071FFF | 128KB |
 
-**统一地址宏(强制,代码只引用宏,禁止硬编码):**
+**统一地址宏(当前候选,最终代码只引用 Common 定义,禁止业务代码硬编码):**
 
 ```c
 #define FLASH_BOOT_BASE     0x08000000UL   /* Bootloader 区 */
@@ -1077,12 +1081,12 @@ NORMAL
 #define STAGING_MANIFEST_ADDR    (STAGING_END + 1UL - MANIFEST_RESERVED_SIZE) /* 0x08071FC0 */
 ```
 
-**分区调整说明(强制):**
+**当前设计约束(待 M1 构建与跳转验证):**
 - 参数区扩展为 **2 × 4KB 独立擦除页**(slot A / slot B),App 起始后移至 0x08012000;512KB Flash 尾部 0x08072000~0x0807FFFF 保留,不得被当前 Boot/App 链接脚本占用
 - 所有新边界仍为 4KB 对齐,`fmc_page_erase()` 页擦除安全
 - 每个槽独立页擦除:**擦除一个槽不会影响另一个槽**(双槽掉电原子性成立的前提)
 - App 区/备份区/暂存区大小不变,起始地址整体后移 4KB
-- **Bootloader 容量门槛:** 64KB 分区内发布构建的 `Code + RO-data + RW-data load image` 必须 ≤ 60KB,至少保留 4KB 余量;若启用 SDIO/FatFs/OLED 后超限,必须在 M0 重新划分 Flash,不得通过关闭校验/回滚功能硬塞
+- **Bootloader 初始容量门槛:** 若暂采用 64KB 候选区,发布构建的 `Code + RO-data + RW-data load image` 目标为 ≤ 60KB,至少保留 4KB 余量;最终容量等 M1 实际构建后再决定,不得通过关闭校验/回滚功能硬塞
 
 ### 2、固件格式(自定义固件包)
 
@@ -1458,6 +1462,8 @@ Bootloader 安装完成 → FW_STATE_TRIAL_PENDING → 启动新 APP
 
 ### 9、Bootloader 启动流程(完整时序)—— 统一状态分派
 
+> 启动入口位于 MCU 内部 Flash。Bootloader 先完成最小时钟/GPIO 和必要外设初始化,再按升级状态机读取内部元数据以及可选的 GD25Q40E/TF 升级包;外部 SPI Flash 只作为存储介质,不直接提供复位向量。
+
 ```
 上电 → Bootloader 开始
   ① OLED 显示 "BOOTLOADER"
@@ -1746,7 +1752,7 @@ _Static_assert(sizeof(upgrade_meta_t) == 68, "upgrade_meta_t must be 68 bytes");
 |---|---|---|---|---|
 | ProtocolTask | RS485 帧解析、CRC、命令分发 | 高(5) | 256 words(≈1KB) | 事件触发(队列) |
 | SampleTask | ADC/DAC 采集、滤波、变比换算(消费常驻采样结果) | 较高(4) | 256 words(≈1KB) | ADC DMA 完成事件 / 100ms 触发 |
-| StorageTask | APP 持久化 IO 唯一执行上下文:FatFs/TF + GD25Q16 Persistence Service,处理文件/KV/告警/审计请求 | 中(3) | 512 words(≈2KB) | 事件触发(队列) |
+| StorageTask | APP 持久化 IO 唯一执行上下文:FatFs/TF + GD25Q40E Persistence Service,处理文件/KV/告警/审计请求 | 中(3) | 512 words(≈2KB) | 事件触发(队列) |
 | AlarmTask | 阈值判断、告警状态机;只产生告警事件与持久化请求,不直接访问 Flash/TF | 中(3) | 256 words(≈1KB) | 事件触发(采样结果队列) |
 | ControlTask | 系统协调器:决定状态迁移并异步调度服务;不亲自执行 FatFs、Flash GC、协议编码或显示 IO | 中(3) | 256 words(≈1KB) | 事件触发(命令/按键/完成消息) |
 | DisplayTask | 执行 Display/Indicator Service 刷新;运行 ebtn 扫描并只上报按键事件,不直接修改业务状态 | 低(2) | 256 words(≈1KB) | 周期性(10ms 按键扫描/500ms 显示) |
@@ -1769,7 +1775,7 @@ USART IDLE/DMA ──► ProtocolTask ──请求──► ControlTask ──�
                     ▲                              │
                     └────完成消息(request_id)──────┘
 
-AlarmTask ──告警落盘请求──► StorageTask ──独占──► FatFs/TF + GD25Q16
+AlarmTask ──告警落盘请求──► StorageTask ──独占──► FatFs/TF + GD25Q40E
 HealthTask ──sleep_ready──► ControlTask ◄── DisplayTask 按键事件
 StorageTask ──busy/progress──► HealthTask
 SampleTask ──最新值快照──► DisplayTask(只读)
@@ -1808,8 +1814,8 @@ SampleTask ──最新值快照──► DisplayTask(只读)
 | 资源 | 所有者 | 访问规则 |
 |---|---|---|
 | FatFs / TF 卡 | StorageTask | 唯一所有者,其他任务只发 Persistence 请求 |
-| 外部 Flash(GD25Q16) | StorageTask | 唯一执行上下文;Persistence Service 内部调用 Flash KV,其他任务不得直接擦除/GC/持 SPI 锁 |
-| SPI 总线(GD25Q16) | StorageTask 内部驱动 | 当前单设备无需向业务暴露 lock/unlock;未来多设备时由 BSP 总线驱动内部串行化 |
+| 外部 Flash(GD25Q40E) | APP:StorageTask;Bootloader:升级状态机 | APP 侧 Persistence Service 独占参数/告警访问;Bootloader 仅在升级阶段独占访问升级包/备份镜像,其他任务不得直接擦除/GC/持 SPI 锁 |
+| SPI 总线(GD25Q40E) | 当前执行上下文内部驱动 | APP 与 Bootloader 不并行访问;切换执行上下文前完成外设收尾,未来多设备时由 BSP 总线驱动内部串行化 |
 | I2C 总线(OLED) | DisplayTask | 单一所有者;其他任务提交显示状态,不直接访问 I2C |
 | USART1(RS485) | ProtocolTask 发送/ISR 接收 | 发送互斥锁 |
 | USART0(调试 CLI) | ControlTask(ISR 仅收数据入队) | 发送互斥锁 |
@@ -1896,7 +1902,7 @@ IndustrialEmbedded/
 │   ├── bsp_adc.c/h             ← ADC/DMA 原始采样
 │   ├── bsp_dac.c/h
 │   ├── bsp_oled_hw.c/h         ← OLED 写命令/显存,不含页面状态
-│   ├── bsp_spi_flash_raw.c/h   ← GD25Q16 read/program/erase
+│   ├── bsp_spi_flash_raw.c/h   ← GD25Q40E read/program/erase
 │   ├── bsp_sdio_block.c/h      ← TF 块设备 read/write/status
 │   ├── bsp_rtc_raw.c/h
 │   ├── bsp_pmu_hw.c/h          ← 仅硬件低功耗进入/恢复
@@ -1990,7 +1996,7 @@ APP_OPTIONAL_INIT_EXPORT(optional_demo_sensor_init, 30);
 | **输入捕获** | capture_callback_t 回调(通道+边沿+时间戳) | 预留:如需测频率/脉宽,`bsp_input_capture` 回调式接口 |
 | **ADC** | 语义通道宏(ADC_SCALED_V5_CHANNEL) | `BSP_ADC_CH_POT` 语义宏 + 100ms 常驻 |
 | **DAC** | 少见,无典型封装 | `bsp_dac_set_voltage(BSP_DAC_CH0, v)` 语义接口 |
-| **SPI 总线** | 总线抽象 + 设备注册表(每个传感器一个驱动) | BSP 提供总线传输原语;GD25Q16 仅由 StorageTask 的 PersistenceService 路径访问,不向业务公开 `bsp_spi_lock/unlock` |
+| **SPI 总线** | 总线抽象 + 设备注册表(每个传感器一个驱动) | BSP 提供总线传输原语;APP 侧 GD25Q40E 由 StorageTask 的 PersistenceService 路径访问,Bootloader 仅在升级阶段访问,不向业务公开 `bsp_spi_lock/unlock` |
 | **OLED** | 传感器驱动框架 | BSP 只负责 I2C/屏控制器原始传输;页面布局、状态文本和刷新节流属于 DisplayService |
 | **SPI Flash** | 设备驱动 | `bsp_flash_read/program/erase`(原始硬件) → FlashKV(Middleware) → PersistenceService(Service),由 StorageTask 单一执行 |
 | **SDIO/TF** | 块设备驱动 | `bsp_sdio_block_read/write`(块设备) → FatFsAdapter(Middleware)完成 mount/unmount/文件操作 |

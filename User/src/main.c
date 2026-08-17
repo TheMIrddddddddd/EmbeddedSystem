@@ -1,9 +1,10 @@
 #include "gd32f4xx.h"
 #include "systick.h"
+#include "board_config.h"
 
-#define LED_PORT        GPIOD
-#define LED_CLK_PORT    RCU_GPIOD
-#define LED1_PIN        GPIO_PIN_8
+#define LED_PORT        BOARD_LED1_PORT
+#define LED_CLK_PORT    BOARD_LED_GPIO_CLK
+#define LED1_PIN        BOARD_LED1_PIN
 
 static void led_gpio_config(void)
 {
@@ -29,10 +30,10 @@ int main(void)
     while(1) {
         /* 点亮 */
         gpio_bit_set(LED_PORT, LED1_PIN);
-        delay_1ms(500);
+        delay_1ms(1000);
 
         /* 熄灭 */
         gpio_bit_reset(LED_PORT, LED1_PIN);
-        delay_1ms(500);
+        delay_1ms(1000);
     }
 }

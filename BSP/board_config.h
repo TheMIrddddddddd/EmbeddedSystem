@@ -1,0 +1,105 @@
+#ifndef BOARD_CONFIG_H
+#define BOARD_CONFIG_H
+
+#include "gd32f4xx.h"                   // Device header
+
+#define BOARD_LED1_PORT          GPIOD
+#define BOARD_LED1_PIN           GPIO_PIN_8
+
+#define BOARD_LED2_PORT          GPIOD
+#define BOARD_LED2_PIN           GPIO_PIN_9
+
+#define BOARD_LED3_PORT          GPIOD
+#define BOARD_LED3_PIN           GPIO_PIN_10
+
+#define BOARD_LED4_PORT          GPIOD
+#define BOARD_LED4_PIN           GPIO_PIN_11
+
+#define BOARD_LED5_PORT          GPIOD
+#define BOARD_LED5_PIN           GPIO_PIN_12
+
+#define BOARD_LED6_PORT          GPIOD
+#define BOARD_LED6_PIN           GPIO_PIN_13
+
+#define BOARD_LED_GPIO_CLK       RCU_GPIOD
+#define BOARD_LED_ACTIVE_HIGH    1U
+
+#define BOARD_KEY1_PORT      GPIOE
+#define BOARD_KEY1_PIN       GPIO_PIN_15
+
+#define BOARD_KEY2_PORT      GPIOE
+#define BOARD_KEY2_PIN       GPIO_PIN_13
+
+#define BOARD_KEY3_PORT      GPIOE
+#define BOARD_KEY3_PIN       GPIO_PIN_11
+
+#define BOARD_KEY4_PORT      GPIOE
+#define BOARD_KEY4_PIN       GPIO_PIN_9
+
+#define BOARD_KEY5_PORT      GPIOE
+#define BOARD_KEY5_PIN       GPIO_PIN_7
+
+#define BOARD_KEY6_PORT      GPIOB
+#define BOARD_KEY6_PIN       GPIO_PIN_0
+
+#define BOARD_KEY_ACTIVE_HIGH    0U
+
+#define BOARD_USART0_PORT      GPIOA
+#define BOARD_USART0_TX_PIN    GPIO_PIN_9
+#define BOARD_USART0_RX_PIN    GPIO_PIN_10
+#define BOARD_USART0_AF        GPIO_AF_7
+
+#define BOARD_USART1_PORT      GPIOA
+#define BOARD_USART1_TX_PIN    GPIO_PIN_2
+#define BOARD_USART1_RX_PIN    GPIO_PIN_3
+#define BOARD_USART1_AF        GPIO_AF_7
+
+#define BOARD_RS485_DIR_PORT    GPIOA
+#define BOARD_RS485_DIR_PIN    GPIO_PIN_1
+
+#define BOARD_USART2_PORT      GPIOB
+#define BOARD_USART2_TX_PIN    GPIO_PIN_10
+#define BOARD_USART2_RX_PIN    GPIO_PIN_11
+#define BOARD_USART2_AF        GPIO_AF_7
+
+#define BOARD_I2C0_PORT        GPIOB
+#define BOARD_I2C0_SCL_PIN     GPIO_PIN_8
+#define BOARD_I2C0_SDA_PIN     GPIO_PIN_9
+#define BOARD_I2C0_AF          GPIO_AF_4
+
+#define BOARD_SPI1_PORT        GPIOB
+#define BOARD_SPI1_SCK_PIN     GPIO_PIN_13
+#define BOARD_SPI1_MISO_PIN    GPIO_PIN_14
+#define BOARD_SPI1_MOSI_PIN    GPIO_PIN_15
+
+#define BOARD_FLASH_CS_PORT    GPIOB
+#define BOARD_FLASH_CS_PIN     GPIO_PIN_12
+#define BOARD_SPI1_AF          GPIO_AF_5
+
+#define BOARD_SDIO_D0_PORT     GPIOC
+#define BOARD_SDIO_D0_PIN      GPIO_PIN_8
+#define BOARD_SDIO_D1_PORT     GPIOC
+#define BOARD_SDIO_D1_PIN      GPIO_PIN_9
+#define BOARD_SDIO_D2_PORT     GPIOC
+#define BOARD_SDIO_D2_PIN      GPIO_PIN_10
+#define BOARD_SDIO_D3_PORT     GPIOC
+#define BOARD_SDIO_D3_PIN      GPIO_PIN_11
+#define BOARD_SDIO_CLK_PORT    GPIOC
+#define BOARD_SDIO_CLK_PIN     GPIO_PIN_12
+#define BOARD_SDIO_CMD_PORT    GPIOD
+#define BOARD_SDIO_CMD_PIN     GPIO_PIN_2
+#define BOARD_SDIO_CD_PORT     GPIOE
+#define BOARD_SDIO_CD_PIN      GPIO_PIN_2
+#define BOARD_SDIO_AF          GPIO_AF_12
+
+#define BOARD_ADC1_CH0_PORT      GPIOC
+#define BOARD_ADC1_CH0_PIN       GPIO_PIN_0
+#define BOARD_ADC1_CH0_CHANNEL   ADC_CHANNEL_10
+
+#define BOARD_ADC1_CH1_PORT      GPIOC
+#define BOARD_ADC1_CH1_PIN       GPIO_PIN_1
+#define BOARD_ADC1_CH1_CHANNEL   ADC_CHANNEL_11
+
+#define BOARD_DAC0_OUT0_PORT     GPIOA
+#define BOARD_DAC0_OUT0_PIN      GPIO_PIN_4
+#endif /* BOARD_CONFIG_H */

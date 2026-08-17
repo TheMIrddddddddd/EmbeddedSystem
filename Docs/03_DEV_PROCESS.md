@@ -104,41 +104,89 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← DMA/定时器通道静态表 + �
 | `boards/gjl/h743mini/src/timer_config.cpp` | `constexpr` 通道静态表:每通道 = {定时器,通道,GPIO},编译期定死 |
 | `boards/gjl/h743mini/src/spi.cpp` | 总线/设备/CS 静态表 + `validateSPIConfig()` 编译期校验 |
 
-**资料状态:** 已取得 `CIMC-IHD-v04` 西门子原理图 PDF,并结合板级引脚确认完成本阶段的 GPIO 初始冻结。以下表格只冻结“板级网络 ↔ MCU 引脚”关系;GPIO 复用编号(AF)、DMA 通道、NVIC 优先级、实际焊接连通性仍需分别依据 GD32F470VE 手册、资源冲突检查和断电通断测试确认。原理图中的 SPI Flash 器件标注为 `GD25Q40E`,而其他项目文档曾写作 `GD25Q16`,容量/器件型号需在 M0 末尾单独消歧。
+**资料状态:** 已取得 `CIMC-IHD-v04` 西门子原理图 PDF,并结合板级引脚确认完成本阶段的 GPIO 初始冻结。用户补充的本地芯片数据手册为 `D:\STM322222222222222222222\GD32_SieMens\GD32\GD32F470xxDatasheet_Rev2.1.pdf`;其中第 52~55 页用于核对 GPIO/AF、ADC/DAC 引脚,第 86 页给出 LXTAL 32.768kHz 电气参数。DMA 请求映射仍以 GD32F4xx User Manual Rev3.4 表 10-2/10-3 为准。以下表格只冻结“板级网络 ↔ MCU 引脚”关系;DMA 通道、NVIC 优先级、实际焊接连通性仍需分别依据资源冲突检查和断电通断测试确认。外部 SPI Flash 已按用户指定冻结为 `GD25Q40E`:4Mbit/512KB、4KB 扇区;当前用途方向为参数/告警以及后续可选的升级包/备份镜像。Bootloader 与 App 的执行位置统一放在 GD32F470 内部 Flash;`0x9F` JEDEC ID 预期为 `0xC84013`,实际板级读回仍待验证,外部 Flash 具体分区待后续实现阶段确定。
 
 ### M0 当前 GPIO/外设映射表
 
-> 来源: `CIMC-IHD-v04` 西门子原理图第 1~4 页 + 用户于 2026-08-15 提供的板级引脚确认。`待 AF/DMA/NVIC` 不表示引脚未确定,而表示 MCU 复用编号和中断资源尚未完成冻结;`待板测` 表示原理图/软件命名已经明确,但尚未对实物做断电通断验证。
+> 来源: `CIMC-IHD-v04` 西门子原理图第 1~4 页 + 用户于 2026-08-15 提供的板级引脚确认 + 本地 `GD32F470xxDatasheet_Rev2.1.pdf`。当前项目涉及的 AF 编号已经由数据手册核对;`待 DMA/NVIC` 表示 DMA 请求和中断资源尚未完成冻结;`待板测` 表示原理图/软件命名已经明确,但尚未对实物做断电通断验证。
 
 #### MCU GPIO 与板级外设
 
 | 功能 | GD32F470 GPIO | 板级网络/器件 | 方向/电气语义 | 连接器或路由 | 来源/状态 |
 |---|---|---|---|---|---|
 | LED1~LED6 | `PD8~PD13` | `LED1~LED6` | GPIO 输出;当前软件定义为高电平点亮、低电平熄灭 | H2: 6→LED1、5→LED2、4→LED3、3→LED4、2→LED5、1→LED6 | 原理图 P2 + `User/src/main.c`; 2026-08-15 已现场验证 LED1 闪烁; LED2~LED6 待板测 |
-| KEY1~KEY6 | `PE15、PE13、PE11、PE9、PE7、PB0` | `FUN_KEY1~FUN_KEY6` | GPIO 输入;外部 10k 上拉到 3V3,按下接 DGND,有效低 | H3: 6→KEY1、5→KEY2、4→KEY3、3→KEY4、2→KEY5、1→KEY6 | 原理图 P1/P2 + 用户确认; 待 AF/板测 |
-| ADC CH0 | `PC0` | `ADC`; 电位器 VR1 | 模拟输入 | VR1 滑动端 → `ADC` | 原理图 P1/P2 + 用户确认; 待 ADC 通道号 |
-| DAC CH1 | `PA4` | DAC 输出 | 模拟输出 | 设计闭环为 `PA4` → 外部跳线 → `PC1` | 原理图 P1 + 项目规格; 待板测 |
-| ADC CH1 | `PC1` | CH1 采集输入 | 模拟输入 | 接收 DAC `PA4` 回读信号 | 原理图 P1 + 项目规格; 待 ADC 通道号 |
-| SD DAT0 | `PC8` | `SD_DAT0` | SDIO 4-bit 双向数据 | TF 卡 DAT0 | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
-| SD DAT1 | `PC9` | `SD_DAT1` | SDIO 4-bit 双向数据 | TF 卡 DAT1 | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
-| SD DAT2 | `PC10` | `SD_DAT2` | SDIO 4-bit 双向数据 | TF 卡 DAT2 | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
-| SD DAT3 | `PC11` | `SD_DAT3` | SDIO 4-bit 双向数据/片选复用网络 | TF 卡 DAT3/CS | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
-| SD CLK | `PC12` | `SD_CLK` | SDIO 时钟输出 | TF 卡 CLK | 原理图 P1/P2 + 用户确认; 待 AF |
-| SD CMD | `PD2` | `SD_CMD` | SDIO 命令双向线 | TF 卡 CMD/DI | 原理图 P1/P2 + 用户确认; 待 AF/DMA |
+| KEY1~KEY6 | `PE15、PE13、PE11、PE9、PE7、PB0` | `FUN_KEY1~FUN_KEY6` | GPIO 输入;外部 10k 上拉到 3V3,按下接 DGND,有效低 | H3: 6→KEY1、5→KEY2、4→KEY3、3→KEY4、2→KEY5、1→KEY6 | 原理图 P1/P2 + 用户确认; GPIO 默认功能,待板测 |
+| ADC CH0 | `PC0` | `ADC1` 规划使用 | 模拟输入 | VR1 滑动端 → `ADC`; `ADC012_IN10` | 原理图 P1/P2 + 用户确认; ADC 通道 10 已确认; ADC1 实例/DMA/板测待完成 |
+| DAC CH1 | `PA4` | `DAC0_OUT0` | 模拟输出 | 设计闭环为 `PA4` → 外部跳线 → `PC1` | 原理图 P1 + 项目规格; `DAC0_OUT0` 已确认; 板测待完成 |
+| ADC CH1 | `PC1` | `ADC1` 规划使用 | 模拟输入 | 接收 DAC `PA4` 回读信号; `ADC012_IN11` | 原理图 P1 + 用户确认; ADC 通道 11 已确认; ADC1 实例/DMA/板测待完成 |
+| SD DAT0 | `PC8` | `SD_DAT0` | SDIO 4-bit 双向数据 | TF 卡 DAT0 | 原理图 P1/P2 + 用户确认; `SDIO_D0`, `AF12`; 待 DMA |
+| SD DAT1 | `PC9` | `SD_DAT1` | SDIO 4-bit 双向数据 | TF 卡 DAT1 | 原理图 P1/P2 + 用户确认; `SDIO_D1`, `AF12`; 待 DMA |
+| SD DAT2 | `PC10` | `SD_DAT2` | SDIO 4-bit 双向数据 | TF 卡 DAT2 | 原理图 P1/P2 + 用户确认; `SDIO_D2`, `AF12`; 待 DMA |
+| SD DAT3 | `PC11` | `SD_DAT3` | SDIO 4-bit 双向数据/片选复用网络 | TF 卡 DAT3/CS | 原理图 P1/P2 + 用户确认; `SDIO_D3`, `AF12`; 待 DMA |
+| SD CLK | `PC12` | `SD_CLK` | SDIO 时钟输出 | TF 卡 CLK | 原理图 P1/P2 + 用户确认; `SDIO_CK`, `AF12`; 待板测 |
+| SD CMD | `PD2` | `SD_CMD` | SDIO 命令双向线 | TF 卡 CMD/DI | 原理图 P1/P2 + 用户确认; `SDIO_CMD`, `AF12`; 待 DMA |
 | SD card detect | `PE2` | `SD_CD` | GPIO 输入;原理图有 10k 上拉,插卡检测按低有效理解 | TF 卡 CD | 原理图 P1/P2 + 用户确认; 待极性/板测 |
-| USART1 TX | `PA2` | `USART1_TX` | USART 发送 | H6 中间左侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; H6 RS485 路由已现场确认; 待 AF/DMA |
-| USART1 RX | `PA3` | `USART1_RX` | USART 接收 | H6 中间右侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; H6 RS485 路由已现场确认; 待 AF/DMA |
+| USART1 TX | `PA2` | `USART1_TX` | USART 发送 | H6 中间左侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; `AF7`; H6 RS485 路由已现场确认; 待 DMA |
+| USART1 RX | `PA3` | `USART1_RX` | USART 接收 | H6 中间右侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; `AF7`; H6 RS485 路由已现场确认; 待 DMA |
 | RS485 方向控制 | `PA1` | `485_CS` | GPIO 输出;图中同时连接 MAX3485 `RE#`/`DE`,低为接收、高为发送 | MAX3485 U12 | 原理图 P1/P4 + 用户确认; PA1/485_CS 到 DE/RE# 连接已确认; 待极性软件实测/通断测试 |
-| USART2 TX | `PB10` | `USART2_TX` | 3.3V TTL USART 发送 | CN1 pin 2 | 原理图 P1/P4 + 用户确认; 待 AF |
-| USART2 RX | `PB11` | `USART2_RX` | 3.3V TTL USART 接收 | CN1 pin 3 | 原理图 P1/P4 + 用户确认; 待 AF |
-| USART0 TX | `PA9` | `USART0_TX` | 3.3V TTL USART 发送 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; H7 与 COM4/CH340 现场确认; 待 AF/DMA |
-| USART0 RX | `PA10` | `USART0_RX` | 3.3V TTL USART 接收 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; H7 与 COM4/CH340 现场确认; 待 AF/DMA |
-| OLED DATA | `PB9` | `OLED_DAT` | OLED 数据线;项目技术栈按 I2C OLED 规划 | OLED1 SDA/DAT | 原理图 P1/P2 + 用户确认; 待 I2C 实例/AF |
-| OLED CLK | `PB8` | `OLED_CLK` | OLED 时钟线;项目技术栈按 I2C OLED 规划 | OLED1 SCL/CLK | 原理图 P1/P2 + 用户确认; 待 I2C 实例/AF |
-| SPI Flash MOSI | `PB15` | `SPI_MOSI` | SPI 主出从入 | GD25Q40E U4 SI/IO0 | 原理图 P1/P2 + 用户确认; 待 SPI 实例/AF |
-| SPI Flash MISO | `PB14` | `SPI_MISO` | SPI 主入从出 | GD25Q40E U4 SO/IO1 | 原理图 P1/P2 + 用户确认; 待 SPI 实例/AF |
-| SPI Flash SCK | `PB13` | `SPI_SCK` | SPI 时钟输出 | GD25Q40E U4 CLK | 原理图 P1/P2 + 用户确认; 待 SPI 实例/AF |
-| SPI Flash CS | `PB12` | `FLASH_CS` | GPIO 输出,低有效片选 | GD25Q40E U4 CS | 原理图 P1/P2 + 用户确认; 待板测 |
+| USART2 TX | `PB10` | `USART2_TX` | 3.3V TTL USART 发送 | CN1 pin 2 | 原理图 P1/P4 + 用户确认; `AF7` |
+| USART2 RX | `PB11` | `USART2_RX` | 3.3V TTL USART 接收 | CN1 pin 3 | 原理图 P1/P4 + 用户确认; `AF7` |
+| USART0 TX | `PA9` | `USART0_TX` | 3.3V TTL USART 发送 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; `AF7`; H7 与 COM4/CH340 现场确认; 待 DMA |
+| USART0 RX | `PA10` | `USART0_RX` | 3.3V TTL USART 接收 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; `AF7`; H7 与 COM4/CH340 现场确认; 待 DMA |
+| OLED DATA | `PB9` | `OLED_DAT` | OLED 数据线;项目技术栈按 I2C OLED 规划 | OLED1 SDA/DAT | 原理图 P1/P2 + 用户确认; `I2C0_SDA`, `AF4`; 待上拉/板测 |
+| OLED CLK | `PB8` | `OLED_CLK` | OLED 时钟线;项目技术栈按 I2C OLED 规划 | OLED1 SCL/CLK | 原理图 P1/P2 + 用户确认; `I2C0_SCL`, `AF4`; 待上拉/板测 |
+| SPI Flash MOSI | `PB15` | `SPI_MOSI` | SPI 主出从入 | GD25Q40E U4 SI/IO0 | 原理图 P1/P2 + 用户确认; `SPI1_MOSI`, `AF5`; 待板测 |
+| SPI Flash MISO | `PB14` | `SPI_MISO` | SPI 主入从出 | GD25Q40E U4 SO/IO1 | 原理图 P1/P2 + 用户确认; `SPI1_MISO`, `AF5`; 待板测 |
+| SPI Flash SCK | `PB13` | `SPI_SCK` | SPI 时钟输出 | GD25Q40E U4 CLK | 原理图 P1/P2 + 用户确认; `SPI1_SCK`, `AF5`; 待板测 |
+| SPI Flash CS | `PB12` | `FLASH_CS` | GPIO 输出,低有效片选 | GD25Q40E U4 CS | 原理图 P1/P2 + 用户确认; 项目使用普通 GPIO CS,不使用 `SPI1_NSS`; 待板测 |
+
+#### M0 时钟树初步确认（2026-08-16）
+
+**结论（源代码和实际构建配置级）:** 当前工程实际选择 `GD32F470` 的 `25MHz HXTAL → PLL 240MHz` 路径;启动文件在进入 `main()` 前调用 `SystemInit()`,因此 LED 闪烁程序使用的系统时钟路径就是这一套配置。下面的数值来自 `system_gd32f4xx.c` 的活动分支,不是根据 LED 闪烁现象反推。
+
+| 时钟节点 | 配置/计算 | 结果 |
+|---|---|---|
+| HXTAL | 外部高速晶振 | `25MHz` |
+| PLLP / SYSCLK | `25MHz / PSC25 × PLL_N480 / PLL_P2` | `240MHz` |
+| AHB / HCLK | `SYSCLK / 1` | `240MHz` |
+| APB2 / PCLK2 | `AHB / 2` | `120MHz` |
+| APB1 / PCLK1 | `AHB / 4` | `60MHz` |
+
+**当前项目外设所属总线:**
+
+| 总线 | 项目外设 | 对应板级功能 |
+|---|---|---|
+| APB2 | `USART0`、`ADC1`、`SDIO` | CH340/COM4 调试串口、`PC0/PC1` ADC 规划、TF 卡 |
+| APB1 | `USART1`、`USART2`、`SPI1`、`I2C0`、`DAC` | RS485/RS232、CN1 TTL 串口、SPI Flash、OLED、`PA4` DAC |
+
+这里先冻结的是**总线归属和系统时钟**。USART 波特率、ADC 分频、SPI 分频、SDIO 输出频率还要等各外设初始化参数确定后再计算,不能直接把 `PCLK1/PCLK2` 当成最终通信速率。
+
+**RTC 状态:** CMSIS 头文件默认定义 `LXTAL_VALUE=32768`;西门子原理图 P1 还明确画出了 `X1=32.768kHz` 并连接到 `OSC32K_IN/OSC32K_OUT`,因此 LSE 晶振在板级设计上存在。当前工程没有找到启用 `LXTAL` 并调用 `rcu_rtc_clock_config(RCU_RTCSRC_LXTAL)` 的活动初始化代码,所以 RTC 仍未进入当前运行配置;X1 实物装配、通断和运行波形尚未板测。
+
+**HXTAL 板级证据:** 西门子原理图 P1 画出了 `X2=25MHz` 并连接到 `OSC25M_IN/OSC25M_OUT`,与当前 `25MHz HXTAL` 软件路径一致。
+
+**证据与边界:** `system_gd32f4xx.c` 的 `GD32F470` 编译分支、PLL 参数、AHB/APB 分频已确认;`startup_gd32f450_470.s` 已确认 `SystemInit()` 先于 `main()` 执行。当前没有示波器/频率计对 HXTAL、LXTAL、SYSCLK 或外设时钟做板级测量,所以本条属于原理图 + 源代码/构建确认,不等于晶振波形和最终外设时钟的实测确认。
+
+#### M0 DMA 请求映射（2026-08-16）
+
+**结论（芯片手册映射级）:** GD32F4xx 官方用户手册 Rev3.4 的 DMA 请求表已经给出这些外设的可选位置。下面是结合本项目需求得到的**推荐无冲突分配**,只完成资源冻结建议,当前工程还没有 DMA 初始化代码。
+
+| 项目 DMA 请求 | DMA 控制器 | `PERIEN[2:0]` / 库枚举 | 推荐通道 | 对应中断 | 当前状态 |
+|---|---|---|---|---|---|
+| USART1-RX（RS485/RS232） | `DMA0` | `100` / `DMA_SUBPERI4` | `Channel5` | `DMA0_Channel5_IRQn` | 推荐冻结;尚未实现 |
+| USART0-RX（CH340/COM4） | `DMA1` | `100` / `DMA_SUBPERI4` | `Channel5` | `DMA1_Channel5_IRQn` | 推荐冻结;尚未实现 |
+| ADC1 routine DMA（PC0/PC1） | `DMA1` | `001` / `DMA_SUBPERI1` | `Channel2` | `DMA1_Channel2_IRQn` | 推荐冻结;尚未实现 |
+| SDIO data DMA（TF 卡） | `DMA1` | `100` / `DMA_SUBPERI4` | `Channel6` | `DMA1_Channel6_IRQn` | 推荐冻结;尚未实现 |
+
+**为什么这样分配:** 手册中 `ADC1` 可放在 `DMA1 Channel2/3`, `USART0_RX` 可放在 `DMA1 Channel2/5`,`SDIO` 可放在 `DMA1 Channel3/6`;选择 `ADC1→2`、`USART0-RX→5`、`SDIO→6` 后,同一 DMA 控制器的通道不重复。`USART1_RX` 在 `DMA0 Channel5`,不与 DMA1 的选择冲突。SDIO 手册示例也明确使用 `DMA1 Channel3 或 Channel6`,本项目选择 Channel6。
+
+**后续可选请求:** 如果以后需要 USART 发送 DMA,手册给出 `USART1_TX→DMA0 Channel6`、`USART0_TX→DMA1 Channel7`;它们暂不纳入当前 M0 必选分配。DMA0/DMA1 时钟位分别是 `RCU_AHB1EN_DMA0EN`、`RCU_AHB1EN_DMA1EN`;所有 DMA 缓冲区仍必须放普通 SRAM,不能放 TCM。
+
+**证据与边界:** 映射来源为官方《GD32F4xx User Manual Rev3.4》表 10-2/10-3（PDF 第 203 页）以及 SDIO DMA 示例（PDF 第 661 页）;本地库提供 `DMA_SUBPERI0~7` 和对应 DMA 中断向量。当前没有 DMA 代码、DMA 中断处理和板级数据收发,所以“通道可用”不等于“DMA 功能已完成”。
+
+#### M0 供电输入初步确认（2026-08-16）
+
+西门子原理图 P3 的电源链路标注 `TPS5450DDAR` 输入范围为 `10~31V`,外部输入端标注为 `24V`;因此按原理图设计,`12V` 处于允许输入范围内,可以作为这块板的外部供电候选。这个结论只覆盖稳压器输入范围,接线前仍必须确认电源端子极性、`DGND` 回路和实物丝印,并进行限流上电测试;不能把 `12V` 直接接到 `3V3` 或 `+5V` 排针。
 
 #### 串口跳线和外部接口约定
 
@@ -165,11 +213,11 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← DMA/定时器通道静态表 + �
 
 #### 当前 M0 未闭合项
 
-- 依据 GD32F470VE 数据手册补齐每个复用引脚的 AF 编号、USART/I2C/SPI/SDIO 实例和 ADC 通道号。
-- 依据芯片 DMA 请求映射表完成 ADC1、USART0-RX、USART1-RX、SDIO 的控制器/通道分配,并确认 DMA 缓冲区放在普通 SRAM 而不是 TCM。
+- 当前项目涉及的 AF 编号已经依据本地 `GD32F470xxDatasheet_Rev2.1.pdf` 核对;PC0/PC1/PA4 的 ADC/DAC 通道和功能也已确认,仍需在实现前完成 ADC1 实例、初始化参数和板测。
+- DMA 请求映射已依据 GD32F4xx 用户手册查明;推荐 `USART1-RX→DMA0/CH5`、`USART0-RX→DMA1/CH5`、`ADC1→DMA1/CH2`、`SDIO→DMA1/CH6`;仍需在实现阶段完成初始化、缓冲区链接位置和中断验证。
 - 依据 NVIC 设计完成 USART IDLE、DMA、EXTI、RTC、SDIO 和 SysTick 的优先级表。
 - 仍需断电使用万用表核对 H6/H7 跳线方向、CN1/CN2/CN3 针脚编号、LED/KEY/TF/Flash/OLED 实物连通性;本次现场确认尚未替代该通断测试。
-- 解决原理图 `GD25Q40E` 与项目规格 `GD25Q16` 的器件型号和容量冲突;在冲突解决前,不得据此确定外部 Flash 容量、擦除布局或驱动型号。
+- 外部 Flash 型号与容量已按用户指定冻结为 `GD25Q40E`(4Mbit/512KB);用途方向确定为参数/告警及后续可选升级包/备份镜像,具体地址分区不在当前 M0 冻结。仍需在后续 SPI 驱动阶段读回 `0x9F` 的 `0xC84013` 并完成断电通断测试,在此之前不视为硬件验收完成。
 
 **验收关卡:** 资源表完成且**无冲突**(DMA 通道互斥、EXTI 线号互斥、NVIC 优先级分层、Flash 边界 4KB 页对齐、`fmc_page_erase()` 适用)。
 
@@ -177,7 +225,7 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← DMA/定时器通道静态表 + �
 
 ## 四、M1:工程地基(Boot/App 双工程)
 
-**目标:** 双工程 + 分区链接 + 向量跳转,打通"上电 Boot → 跳 App"最小链路。
+**目标:** 双工程 + 内部 Flash 分区链接 + 向量跳转,打通"上电 Boot → 跳 App"最小链路;GD25Q40E 先保留为后续外部存储,不参与复位启动。
 
 **动作清单(严格按序):**
 
@@ -186,7 +234,7 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← DMA/定时器通道静态表 + �
    Common/  BSP/Boards/gd32f470ve_v1/  Middleware/  Services/  Tasks/  App/  Bootloader/
    Libraries/(SPL,不动)  Driver/(CMSIS,不动)  User/(逐步废弃)
    ```
-2. **先建 Common 最小子集**:`common_flash_layout.h`(十二-1 的 9 个地址宏 + MANIFEST 宏)——两个工程的链接脚本都引用它;
+2. **先建 Common 最小子集**:`common_flash_layout.h`(当前候选内部 Flash 地址宏 + MANIFEST 宏)——两个工程的链接脚本都引用它,最终地址以 M1 构建验证为准;
 3. **拆出 Boot 工程**(Keil 主力):0x08000000 裸机,最小 LED + 5s 等待 + 跳转 App(跳转前按《01》十二-8 的 10 步序列:关中断/关 SysTick/反初始化/NVIC 清中断/校验 MSP 与复位向量/VTOR/MSP/跳转);
 4. **改造 App 工程**(Keil + EIDE):链接到 0x08012000,`SCB->VTOR = APP_BASE`,闪灯频率与 Boot 区分(如 2Hz vs 0.5Hz,肉眼可辨谁在跑);
 5. **双工具链对齐**:AC5 scatter 与 GCC `gd32f470xE_flash.ld` 都按统一分区产出,两边都能编译烧录;
@@ -203,7 +251,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **验收关卡(照搬《01》M1):** 上电 Boot 5s 后跳 App,OLED/LED 显示切换;两个工程均可编译烧录。
 
-**卡点:** Bootloader 64KB 分区内发布映像 `Code + RO-data + RW-data load` **必须 ≤ 60KB**(《01》十二-1 门槛);若后期 SDIO/FatFs/OLED 撑爆,回到 M0 重新划区,不允许砍校验功能硬塞。
+**卡点:** 若采用当前候选的 64KB Bootloader 区,发布映像 `Code + RO-data + RW-data load` 目标为 ≤ 60KB;最终容量以 M1 实际构建和跳转验证为准,若后期 SDIO/FatFs/OLED 撑爆,回到 M0 重新划区,不允许砍校验功能硬塞。
 
 ---
 
@@ -278,19 +326,21 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 1. 三类文件存储:sample/alarm 每文件 10 条滚动、命名规则、audit 上电次数自增(boot_00000N.log),关键记录 `f_sync()`(《01》六章);
 2. `config.ini` 原子导入:读全文件 → 临时结构解析校验 → 一次性替换 + Flash 原子写,任一行失败整组不生效(《01》三-1);
-3. `config save/read` 走 Flash KV(GD25Q16 sector 0/1 双扇区轮换,《02》4.5 分区表);
+3. `config save/read` 走 Flash KV(GD25Q40E sector 0/1 双扇区轮换,《02》4.5 候选分区方向);
 4. 告警状态机:连续 3 次超限 → ACTIVE(只触发一次)→ 滞回 0.05V → RECOVERED;LED3 / CSV / Flash 最近 10 条 / RS485 上报按模式联动(《01》九章);
 5. 拔卡降级/重挂载:检测拔卡停写不停采,重插恢复;写失败重试 3 次(100/300/900ms)后降级(《01》六-4)。
 
+**GD25Q40E 角色边界:** M5 先实现参数/告警等业务存储;升级包和备份镜像属于后续 M6 升级流程的可选外部存储,具体地址、格式和掉电策略等做到对应阶段再确定。
+
 **验收关卡:** P 类验收项(P-01~P-03、Q-01~Q-02)+ 十三-5 使能位联动规则。
 
-**风险点:** 所有 TF/GD25Q16 访问必须只在 StorageTask 上下文,ControlTask/AlarmTask 只发请求(《01》三-4 存储分域强制项)。
+**风险点:** APP 的 TF/GD25Q40E 参数/告警访问必须只在 StorageTask 上下文,ControlTask/AlarmTask 只发请求;M6 Bootloader 访问 GD25Q40E 仅允许发生在升级状态机的独占阶段(《01》三-4 存储分域强制项)。
 
 ---
 
 ## 九、M6:Bootloader(全程最硬核)
 
-**目标:** 在线 IAP + TF 离线升级 + 掉电恢复 + 启动确认回滚,全部按《01》十二章状态机实现。
+**目标:** 在内部 Flash Bootloader/App 链路之上实现在线 IAP + TF 离线升级 + 可选 GD25Q40E 升级包/备份镜像 + 掉电恢复 + 启动确认回滚,全部按《01》十二章状态机实现。
 
 **动作清单(严格按文档顺序):**
 

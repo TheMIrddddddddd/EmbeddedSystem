@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\BSP</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -568,6 +568,16 @@
               <FileName>systick.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\src\systick.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>BSP</GroupName>
+          <Files>
+            <File>
+              <FileName>board_config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\BSP\board_config.h</FilePath>
             </File>
           </Files>
         </Group>
