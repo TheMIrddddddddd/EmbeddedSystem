@@ -834,10 +834,10 @@ NORMAL
 | LED3 | 告警灯 | 任一通道超阈值 | 全部恢复阈值内 | 触发时 0.2s 快闪;按下 KEY5 确认后变为常亮 |
 | LED4 | 参数异常灯 | 参数加载失败(Flash 无有效记录) | 参数加载成功 | 常亮 |
 | LED5 | TF 卡状态灯 | TF 卡挂载成功 | TF 卡未插/掉卡 | 常亮 |
-| LED6 | 升级指示灯 | Bootloader 升级进行中 | 升级完成/失败 | **波浪呼吸特效**(见本节点 5) |
+| LED6 | 升级指示灯 | Bootloader 升级阶段由 Bootloader 状态指示器接管 | App 运行期间不单独占用 | 状态/进度指示(见本节点 5/6) |
 
 **全局规则:**
-- Bootloader 运行期间:LED 全部熄灭(LED6 升级特效时除外)
+- Bootloader 运行期间(未来 M6):LED 由 Bootloader 状态指示器独占;等待、写入、校验、成功和失败状态按节点 6 显示
 - 设备进入睡眠:LED 全部熄灭
 - LED1 的 1s 闪烁与采样周期无关,恒定 1s
 - 按键有效触发后,对应功能 LED 闪烁 1 次作为操作反馈(见节点 2 通用规则)
@@ -995,44 +995,51 @@ NORMAL
 - 搬运中:百分比 90→100 推进
 - 完成:满格 `100%`,切换为 `DONE!`
 
-### 6、LED 波浪呼吸特效(升级专用)
+### 6、升级专用 LED 状态/进度指示（M6 目标,当前未实现）
 
-**升级进行中,LED1~LED6 按正弦波渐亮渐暗,相邻 LED 相位差 60°,形成连续流动的光波效果(流水呼吸灯)。**
+**本节保留为后续 Bootloader 的目标规格。当前工程不创建 Bootloader LED 模块,也不在 APP 层接入升级状态机。升级阶段不再使用波浪呼吸灯,未来改为无 PWM 的静态状态显示和六级累计进度条。**
 
-**视觉行为描述:**
+**状态定义:**
 
-- 6 个 LED 的亮度各自按一条正弦曲线随时间变化,相邻两个 LED 的亮度曲线错开 60° 相位
-- 效果:光波从 LED1 方向流向 LED6 方向,每 4 秒完成一圈完整的流动
-- 任意时刻,6 个 LED 都处于"渐亮→最亮→渐暗"中的不同阶段,形成连续的光带滚动,而非依次开关
+| Bootloader 状态 | LED 行为 | 说明 |
+|---|---|---|
+| 等待升级 | LED1 慢闪,周期 1s | Bootloader 已启动,等待升级请求 |
+| 擦除/写入 | LED1~LEDn 累计点亮 | `n` 由已成功写入字节数计算 |
+| 正在校验 | 六个 LED 同时慢闪,周期 1s | CRC/镜像完整性校验进行中 |
+| 升级成功 | 六个 LED 常亮 | 校验通过,短暂显示后跳转 App |
+| 升级失败 | 六个 LED 快闪两次后停顿,重复保持 | 不跳转 App,等待复位或新的升级请求 |
 
-**亮度曲线细节:**
+**六级进度映射:**
 
-- 每个 LED 的亮度按正弦波从 0 渐变到最亮再回到 0
-- 亮度曲线经过视觉增强处理:中间亮度区域显得更饱满,暗部被压低,明暗对比更强烈,流动感更明显
-- 亮度分约 10 级,通过软件 PWM 方式实现(在一个很短的 PWM 周期内,按当前亮度比例决定 LED 点亮与熄灭的时间占比,人眼感知为对应亮度)
-
-**"波浪推进"与"升级进度"联动:**
-
-| 升级进度 | 波浪行为 |
+| 固件进度 | LED 显示 |
 |---|---|
-| 0~25% | 波浪速度正常(约 4s 一圈) |
-| 25~75% | 波浪周期随进度缩短(4s→约 1.5s,进度越快流动越快) |
-| 75~100% | 波浪停在 LED6,LED6 单独呼吸(渐亮渐暗),提示即将完成 |
-| 完成/失败 | 波浪停止,LED 全部熄灭 |
+| 0% | 全灭 |
+| 1%~16% | LED1 |
+| 17%~33% | LED1~LED2 |
+| 34%~50% | LED1~LED3 |
+| 51%~66% | LED1~LED4 |
+| 67%~83% | LED1~LED5 |
+| 84%~100% | LED1~LED6 |
 
-**实现要求:**
+**实现约束:**
 
-- 由 1ms 定时器节拍驱动刷新(每 1ms 重算一次 6 个 LED 的亮度并输出)
-- 刷新时一次写入全部 6 个 LED(利用 GPIO 寄存器按位操作,PD8~PD13 连续引脚可一次写)
-- 波浪速度随升级进度的联动:升级状态机每接收完一片固件(256 字节)更新一次速度参数
-- 正弦函数可用浮点库直接计算,也可用预计算查表替代,以降低 CPU 开销
+- 写入进度由 `已成功写入字节数 / 固件总长度` 计算,不能只按已接收字节数估计。
+- 固件总长度来自升级包头;协议未提供总长度时,只能显示状态,不能声称有准确百分比。
+- 写入/校验阶段只在状态或进度变化时更新 GPIO,不使用 `sinf()`、`powf()`、浮点亮度计算或软件 PWM。
+- 1ms 节拍只用于慢闪和错误双闪的状态机;擦写内部 Flash 造成 CPU 暂停时,LED 保持当前电平。
+- Bootloader 与 App 分别拥有 LED 控制权,不能在同一运行路径中同时刷新 `PD8~PD13`。
 
-### 7、完整状态联动矩阵(核心)
+### 7、完整状态联动矩阵(核心目标)
+
+> 下表是最终 Bootloader/App 联动目标,不是当前单工程的已实现状态。当前只保留 `APP/led_app.c` 的应用层 LED 接口。
 
 | 状态 | LED1 | LED2 | LED3 | LED4 | LED5 | LED6 | OLED 第一行 | OLED 第二行 | KEY1 | 采样 | 上报 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Bootloader 等待 | 灭 | 灭 | 灭 | 灭 | 灭 | 灭 | BOOTLOADER | WAIT... | 无效 | 停 | 无 |
-| 升级进行中 | 波浪特效 | 波浪特效 | 波浪特效 | 波浪特效 | 波浪特效 | 波浪特效 | UPDATING | 进度条+% | 无效 | 停 | 无 |
+| Bootloader 等待 | 慢闪 | 灭 | 灭 | 灭 | 灭 | 灭 | BOOTLOADER | WAIT... | 无效 | 停 | 无 |
+| 升级写入中 | 按进度 | 按进度 | 按进度 | 按进度 | 按进度 | 按进度 | UPDATING | 进度条+% | 无效 | 停 | 无 |
+| Bootloader 校验中 | 慢闪 | 慢闪 | 慢闪 | 慢闪 | 慢闪 | 慢闪 | UPDATING | VERIFY... | 无效 | 停 | 无 |
+| Bootloader 升级成功 | 常亮 | 常亮 | 常亮 | 常亮 | 常亮 | 常亮 | BOOTLOADER | DONE! | 无效 | 停 | 无 |
+| Bootloader 升级失败 | 双闪保持 | 双闪保持 | 双闪保持 | 双闪保持 | 双闪保持 | 双闪保持 | BOOTLOADER | UPDATE FAIL | 无效 | 停 | 无 |
 | App 空闲 | 1s 闪 | 灭 | 按告警 | 按参数 | 按卡 | 灭 | RUNNING | CH0/CH1 值 | 启动采样 | 停 | 无 |
 | 自动采集 | 1s 闪 | 亮 | 按告警 | 按参数 | 按卡 | 灭 | SAMPLING | CH0/CH1 值 | 停止采样 | 周期运行 | 周期帧 |
 | 超限告警 | 1s 闪 | 亮 | 0.2s 快闪 | 按参数 | 按卡 | 灭 | SAMPLING | CH0 OVER! | 停止采样 | 周期运行 | 周期帧+告警 |
@@ -1041,7 +1048,7 @@ NORMAL
 | 深度睡眠 | 灭 | 灭 | 灭 | 灭 | 灭 | 灭 | (灭) | (灭) | 唤醒 | 停 | 无 |
 
 **矩阵说明:**
-- 升级进行中:LED1~LED6 **全部**参与波浪呼吸特效(见节点 5),矩阵中"波浪特效"指此
+- 升级写入中:LED1~LED6 按六级累计进度条显示,矩阵中"按进度"指当前进度及以前的 LED 累计点亮
 - "告警已确认"状态由按下 KEY5 进入(告警闪烁→常亮)
 
 ---
@@ -1758,7 +1765,9 @@ _Static_assert(sizeof(upgrade_meta_t) == 68, "upgrade_meta_t must be 68 bytes");
 | DisplayTask | 执行 Display/Indicator Service 刷新;运行 ebtn 扫描并只上报按键事件,不直接修改业务状态 | 低(2) | 256 words(≈1KB) | 周期性(10ms 按键扫描/500ms 显示) |
 | HealthTask | 按任务健康契约检查 deadline/alive/busy/豁免状态,满足条件后喂狗并报告睡眠就绪 | 高(5) | 128 words(≈0.5KB) | 周期性(1s) |
 
-**注意:** 原生 xTaskCreate() 的栈深度单位是 StackType_t(4 字节 word),非字节;上表已换算。
+**静态创建约束:** 本项目所有 APP 任务使用 `xTaskCreateStatic()` 创建,每个任务必须显式提供 `StaticTask_t` 控制块和 `StackType_t[]` 栈数组;上表栈深度单位是 `StackType_t`(4 字节 word),非字节。禁止在 APP 中使用 `xTaskCreate()`。
+
+**静态对象约束:** 队列使用 `xQueueCreateStatic()`;事件组使用 `xEventGroupCreateStatic()`;互斥锁/信号量使用对应的 `...Static()` API;软件定时器使用 `xTimerCreateStatic()`。启用软件定时器时,还必须通过 `vApplicationGetIdleTaskMemory()` 和 `vApplicationGetTimerTaskMemory()` 提供 IdleTask、Timer Service Task 的静态内存。FreeRTOS 配置固定为 `configSUPPORT_STATIC_ALLOCATION=1`、`configSUPPORT_DYNAMIC_ALLOCATION=0`,不编译/不链接 `heap_4.c`。
 
 **优先级说明:** FreeRTOS 数字越大优先级越高。ProtocolTask 与 HealthTask 同高优先级(协议实时性 + 喂狗不延迟);DisplayTask 最低(可被抢占)。
 
@@ -1856,11 +1865,20 @@ SampleTask ──最新值快照──► DisplayTask(只读)
 
 | 区域 | 预估 | 说明 |
 |---|---|---|
-| **FreeRTOS 动态内存池(heap_4)** | 16KB | 任务栈约 7.5KB;补全回程后的队列载荷约 1.8KB,队列/任务控制块、事件组、信号量与分配器开销按约 3KB 预算;保留约 3.7KB 峰值余量(**任务栈来自 heap_4,不重复计算**) |
+| **GD32F470 内部 Flash** | **512KB** | 存放 Bootloader、App 和内部元数据/参数区;这是程序与只读数据空间,不是 FreeRTOS heap |
+| **普通 SRAM** | **192KB** | 任务运行数据、普通全局变量和 DMA 缓冲区;DMA 缓冲区必须放这里,不能放 TCM |
+| **TCMRAM** | **64KB** | 高速 TCM 区;总 RAM = 192KB + 64KB |
+| **FreeRTOS 静态对象总预算** | **约 16KB（初始预算）** | 包含七个业务任务栈约 7.5KB、任务控制块、IdleTask/Timer Service Task、静态队列、事件组、互斥锁、信号量和软件定时器;这是 RAM 规划预算,不是 `heap_4` 动态池 |
 | 环形缓冲区(静态) | 2KB | RS485 接收(≥2048B,容纳最大帧 1040B) |
 | FatFs 工作区(静态) | ~2KB | 文件系统内部 |
 | 业务全局数据(静态) | ~4KB | 协议/配置/状态 |
-| **RAM 合计** | **~24KB / 256KB** | 余量充足 |
+| **当前软件预算小计** | **~24KB / 256KB** | 仅为当前规划的 heap/静态对象粗略预算,不是链接器最终 `RAM Used`;最终以 `.map`、任务栈水位和运行时余量为准 |
+
+**静态内存与芯片容量的关系:** 上述 16KB 是从 256KB RAM 中规划给 FreeRTOS 静态对象的预算,不表示芯片只有 16KB RAM,也不表示从 512KB Flash 中拿出 16KB。静态对象会直接进入 `.bss`/指定 RAM 段,最终以 `.map` 文件和栈水位检查为准;如果队列、Timer Service Task 或任务栈实际增加,应调整静态数组和总 RAM 预算。
+
+**当前七任务栈预算:** `256 + 256 + 512 + 256 + 256 + 256 + 128 = 1920 words`;在 `StackType_t` 为 4 字节时约为 `7680B`。这 7.5KB 只是七个业务任务的栈,不包含 TCB、IdleTask、Timer Service Task、队列和其他内核对象。GCC 链接脚本中的 `__heap_size = 1K` 属于裸机/newlib 的链接器堆预留;本项目 FreeRTOS 关闭动态分配后,不使用 `heap_4`。
+
+**`heap_4` 边界:** `heap_4.c` 是 FreeRTOS 的一种动态内存管理实现,服务于 `pvPortMalloc()`/`vPortFree()` 以及 `xTaskCreate()`、`xQueueCreate()`、`xTimerCreate()` 等动态 API。它支持释放后相邻空闲块合并,但仍属于动态分配机制。本项目全部使用静态 API,因此不需要 `heap_4.c`;若第三方中间件调用 `pvPortMalloc()`,必须改为固定缓冲区或静态对象,否则就重新引入了动态内存。
 
 ---
 
@@ -1916,7 +1934,7 @@ IndustrialEmbedded/
 ├── Services/                   ← 领域服务,不拥有独立线程
 │   ├── Persistence/            ← 文件/KV/告警/审计接口,由 StorageTask 执行
 │   ├── Display/                ← 页面内容与 OLED 显示策略
-│   ├── Indicator/              ← LED 模式/波浪状态机
+│   ├── Indicator/              ← LED 状态/进度/闪烁状态机
 │   ├── PowerManager/           ← 睡眠静默与多任务协调
 │   └── TimeService/            ← UTC/RTC/文件时间
 ├── Tasks/                      ← 七任务入口与消息循环
@@ -1988,11 +2006,11 @@ APP_OPTIONAL_INIT_EXPORT(optional_demo_sensor_init, 30);
 
 | 外设 | PX4 封装 | 我们的借鉴 |
 |---|---|---|
-| **LED** | LedController 状态机:业务发语义(ARMED/OVERLOAD),驱动按模式执行 | BSP 只提供 `bsp_gpio_write(BSP_GPIO_LED_SYS, level)`;`IndicatorService` 接收 NORMAL/ALARM/UPGRADING 等语义并执行闪烁/波浪状态机 |
+| **LED** | LedController 状态机:业务发语义(ARMED/OVERLOAD),驱动按模式执行 | BSP 只提供 `bsp_gpio_write(BSP_GPIO_LED_SYS, level)`;`IndicatorService` 接收 NORMAL/ALARM/UPGRADING 等语义并执行闪烁/进度状态机 |
 | **KEY** | 输入事件流(RC 输入抽象),业务收事件不碰引脚 | BSP 提供原始电平读取;ebtn 在 Middleware 层完成消抖/长按识别;DisplayTask 将按键事件发送给 ControlTask,不直接修改业务状态 |
 | **UART** | 设备文件 + 工作队列驱动 | 固定端口使用 `bsp_uart_init(BSP_UART_RS485)`、`bsp_uart_rx_dma_start(...)` 等枚举 ID 静态接口,不使用字符串 open/动态设备注册 |
 | **定时器/HRT** | 高分辨率定时器:hrt_callout 回调链表(deadline/period),统一时间服务 | APP 周期行为使用 FreeRTOS 软件定时器或 `vTaskDelayUntil`;BSP 仅保留硬件时基/SysTick 中断入口;Bootloader 使用独立、显式初始化的裸机时基 |
-| **PWM/定时器输出** | ioctl 控制(PWM_SERVO_SET/ARM),混控器管理 | 如 LED 波浪需要固定周期,由 IndicatorService 驱动 BSP GPIO/硬件 PWM;禁止在 BSP 内建立第二套通用软件调度器 |
+| **PWM/定时器输出** | ioctl 控制(PWM_SERVO_SET/ARM),混控器管理 | 当前 LED 升级指示不使用 PWM;若未来其他功能确需 PWM,由对应 Service 驱动硬件 PWM,禁止在 BSP 内建立第二套通用软件调度器 |
 | **输入捕获** | capture_callback_t 回调(通道+边沿+时间戳) | 预留:如需测频率/脉宽,`bsp_input_capture` 回调式接口 |
 | **ADC** | 语义通道宏(ADC_SCALED_V5_CHANNEL) | `BSP_ADC_CH_POT` 语义宏 + 100ms 常驻 |
 | **DAC** | 少见,无典型封装 | `bsp_dac_set_voltage(BSP_DAC_CH0, v)` 语义接口 |
@@ -2007,7 +2025,7 @@ APP_OPTIONAL_INIT_EXPORT(optional_demo_sensor_init, 30);
 
 | 调用者看到的接口 | 实际归属 | 边界说明 |
 |---|---|---|
-| `indicator_set_state(INDICATOR_ALARM)` | IndicatorService | 业务传语义,Service 计算灯效,BSP 只写 GPIO/PWM |
+| `indicator_set_state(INDICATOR_ALARM)` | IndicatorService | 业务传语义,Service 计算状态/进度,BSP 只写 GPIO |
 | `display_post_model(&model)` | DisplayService | 业务发布显示模型,DisplayTask 独占 OLED IO |
 | `persistence_kv_set_async(request_id, ...)` | PersistenceService | 转为 StorageTask 请求;调用者不持 SPI 锁、不执行擦除/GC |
 | `fatfs_adapter_mount()` | FatFsAdapter | 仅 StorageTask/Bootloader 离线升级流程调用,不属于 BSP |

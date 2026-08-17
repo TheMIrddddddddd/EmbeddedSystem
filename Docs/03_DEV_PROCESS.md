@@ -3,7 +3,7 @@
 > 文档版本:V1.0 | 日期:2026-08-09
 > 定位:本文是《01_PROJECT_OVERVIEW.md》第十五章 M0~M7 里程碑的**执行级展开**——把每个里程碑翻译成「动作清单 → 产出文件 → 依赖 → 卡点 → 验收关卡」。
 > 使用方式:开发时照表执行,验收时对照《01》第十四章(A-01~Q-02)与第十四-2(稳定性)逐条验证;技术原理见《02_TECH_STACK.md》。
-> 当前工程状态:单工程裸机闪灯 demo(0x08000000 全 Flash,Keil/EIDE 双工具链配置保留),已完成 `BSP/board_config.h` 初版和 LED1 实物验证;尚未拆分 Boot/App,业务代码为零。
+> 当前工程状态:M0 硬件资源冻结与板级基础确认已完成;当前仍是单工程裸机 demo(0x08000000 全 Flash,Keil/EIDE 双工具链配置保留),尚未拆分 Boot/App,尚未移植 FreeRTOS,业务代码为零。
 
 ---
 
@@ -104,41 +104,41 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← 后续 DMA/定时器通道静态�
 | `boards/gjl/h743mini/src/timer_config.cpp` | `constexpr` 通道静态表:每通道 = {定时器,通道,GPIO},编译期定死 |
 | `boards/gjl/h743mini/src/spi.cpp` | 总线/设备/CS 静态表 + `validateSPIConfig()` 编译期校验 |
 
-**资料状态:** 已取得 `CIMC-IHD-v04` 西门子原理图 PDF,并结合板级引脚确认完成本阶段的 GPIO 初始冻结。用户补充的本地芯片数据手册为 `D:\STM322222222222222222222\GD32_SieMens\GD32\GD32F470xxDatasheet_Rev2.1.pdf`;其中第 52~55 页用于核对 GPIO/AF、ADC/DAC 引脚,第 86 页给出 LXTAL 32.768kHz 电气参数。DMA 请求映射仍以 GD32F4xx User Manual Rev3.4 表 10-2/10-3 为准。以下表格只冻结“板级网络 ↔ MCU 引脚”关系;DMA 通道、NVIC 优先级、实际焊接连通性仍需分别依据资源冲突检查和断电通断测试确认。外部 SPI Flash 已按用户指定冻结为 `GD25Q40E`:4Mbit/512KB、4KB 扇区;当前用途方向为参数/告警以及后续可选的升级包/备份镜像。Bootloader 与 App 的执行位置统一放在 GD32F470 内部 Flash;`0x9F` JEDEC ID 预期为 `0xC84013`,实际板级读回仍待验证,外部 Flash 具体分区待后续实现阶段确定。
+**资料状态:** 已取得 `CIMC-IHD-v04` 西门子原理图 PDF,并结合板级引脚确认完成本阶段的 GPIO 初始冻结。用户补充的本地芯片数据手册为 `D:\STM322222222222222222222\GD32_SieMens\GD32F470xxDatasheet_Rev2.1.pdf`;其中第 52~55 页用于核对 GPIO/AF、ADC/DAC 引脚,第 86 页给出 LXTAL 32.768kHz 电气参数。DMA 请求映射仍以 GD32F4xx User Manual Rev3.4 表 10-2/10-3 为准。用户已说明此前使用裸机程序确认过这块板的板载硬件,因此 M0 的硬件资源冻结与板级基础确认按本项目边界视为完成;DMA/NVIC 初始化、驱动代码和 FreeRTOS 集成统一放到 M3/M4 实现。外部 SPI Flash 已按用户指定冻结为 `GD25Q40E`:4Mbit/512KB、4KB 扇区;当前用途方向为参数/告警以及后续可选的升级包/备份镜像。Bootloader 与 App 的执行位置统一放在 GD32F470 内部 Flash;`0x9F` JEDEC ID 作为 M3 SPI Flash 驱动的最小软件验收项,外部 Flash 具体分区待后续实现阶段确定。
 
 ### M0 当前 GPIO/外设映射表
 
-> 来源: `CIMC-IHD-v04` 西门子原理图第 1~4 页 + 用户于 2026-08-15 提供的板级引脚确认 + 本地 `GD32F470xxDatasheet_Rev2.1.pdf`。当前项目涉及的 AF 编号已经由数据手册核对;`待 DMA/NVIC` 表示 DMA 请求和中断资源尚未完成冻结;`待板测` 表示原理图/软件命名已经明确,但尚未对实物做断电通断验证。
+> 来源: `CIMC-IHD-v04` 西门子原理图第 1~4 页 + 用户于 2026-08-15/2026-08-17 提供的板级确认 + 本地 `GD32F470xxDatasheet_Rev2.1.pdf`。当前项目涉及的 AF 编号已经由数据手册核对。用户已确认此前用裸机程序验证过全部板载硬件;表格中的“归 M3 实现”表示软件驱动、DMA/NVIC、任务所有权和上层接口尚未写入当前工程,不表示 M0 硬件资源未闭合。
 
 #### MCU GPIO 与板级外设
 
 | 功能 | GD32F470 GPIO | 板级网络/器件 | 方向/电气语义 | 连接器或路由 | 来源/状态 |
 |---|---|---|---|---|---|
-| LED1~LED6 | `PD8~PD13` | `LED1~LED6` | GPIO 输出;当前软件定义为高电平点亮、低电平熄灭 | H2: 6→LED1、5→LED2、4→LED3、3→LED4、2→LED5、1→LED6 | 原理图 P2 + `BSP/board_config.h`; LED1 已现场验证闪烁; LED2~LED6 待板测 |
-| KEY1~KEY6 | `PE15、PE13、PE11、PE9、PE7、PB0` | `FUN_KEY1~FUN_KEY6` | GPIO 输入;外部 10k 上拉到 3V3,按下接 DGND,有效低 | H3: 6→KEY1、5→KEY2、4→KEY3、3→KEY4、2→KEY5、1→KEY6 | 原理图 P1/P2 + 用户确认; GPIO 默认功能,待板测 |
+| LED1~LED6 | `PD8~PD13` | `LED1~LED6` | GPIO 输出;当前软件定义为高电平点亮、低电平熄灭 | H2: 6→LED1、5→LED2、4→LED3、3→LED4、2→LED5、1→LED6 | 原理图 P2 + `BSP/board_config.h`;用户已有裸机逐路确认;LED 驱动与状态服务归 M3 |
+| KEY1~KEY6 | `PE15、PE13、PE11、PE9、PE7、PB0` | `FUN_KEY1~FUN_KEY6` | GPIO 输入;外部 10k 上拉到 3V3,按下接 DGND,有效低 | H3: 6→KEY1、5→KEY2、4→KEY3、3→KEY4、2→KEY5、1→KEY6 | 原理图 P1/P2 + 用户确认;用户已有裸机确认;GPIO 扫描、消抖和 ebtn/FreeRTOS 事件归 M3 |
 | ADC CH0 | `PC0` | `ADC1` 规划使用 | 模拟输入 | VR1 滑动端 → `ADC`; `ADC012_IN10` | 原理图 P1/P2 + 用户确认; ADC 通道 10 已确认; ADC1 实例/DMA/板测待完成 |
 | DAC CH1 | `PA4` | `DAC0_OUT0` | 模拟输出 | 设计闭环为 `PA4` → 外部跳线 → `PC1` | 原理图 P1 + 项目规格; `DAC0_OUT0` 已确认; 板测待完成 |
 | ADC CH1 | `PC1` | `ADC1` 规划使用 | 模拟输入 | 接收 DAC `PA4` 回读信号; `ADC012_IN11` | 原理图 P1 + 用户确认; ADC 通道 11 已确认; ADC1 实例/DMA/板测待完成 |
-| SD DAT0 | `PC8` | `SD_DAT0` | SDIO 4-bit 双向数据 | TF 卡 DAT0 | 原理图 P1/P2 + 用户确认; `SDIO_D0`, `AF12`; 待 DMA |
-| SD DAT1 | `PC9` | `SD_DAT1` | SDIO 4-bit 双向数据 | TF 卡 DAT1 | 原理图 P1/P2 + 用户确认; `SDIO_D1`, `AF12`; 待 DMA |
-| SD DAT2 | `PC10` | `SD_DAT2` | SDIO 4-bit 双向数据 | TF 卡 DAT2 | 原理图 P1/P2 + 用户确认; `SDIO_D2`, `AF12`; 待 DMA |
-| SD DAT3 | `PC11` | `SD_DAT3` | SDIO 4-bit 双向数据/片选复用网络 | TF 卡 DAT3/CS | 原理图 P1/P2 + 用户确认; `SDIO_D3`, `AF12`; 待 DMA |
-| SD CLK | `PC12` | `SD_CLK` | SDIO 时钟输出 | TF 卡 CLK | 原理图 P1/P2 + 用户确认; `SDIO_CK`, `AF12`; 待板测 |
-| SD CMD | `PD2` | `SD_CMD` | SDIO 命令双向线 | TF 卡 CMD/DI | 原理图 P1/P2 + 用户确认; `SDIO_CMD`, `AF12`; 待 DMA |
-| SD card detect | `PE2` | `SD_CD` | GPIO 输入;原理图有 10k 上拉,插卡检测按低有效理解 | TF 卡 CD | 原理图 P1/P2 + 用户确认; 待极性/板测 |
-| USART1 TX | `PA2` | `USART1_TX` | USART 发送 | H6 中间左侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; `AF7`; H6 RS485 路由已现场确认; 待 DMA |
-| USART1 RX | `PA3` | `USART1_RX` | USART 接收 | H6 中间右侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; `AF7`; H6 RS485 路由已现场确认; 待 DMA |
-| RS485 方向控制 | `PA1` | `485_CS` | GPIO 输出;图中同时连接 MAX3485 `RE#`/`DE`,低为接收、高为发送 | MAX3485 U12 | 原理图 P1/P4 + 用户确认; PA1/485_CS 到 DE/RE# 连接已确认; 待极性软件实测/通断测试 |
-| USART2 TX | `PB10` | `USART2_TX` | 3.3V TTL USART 发送 | CN1 pin 2 | 原理图 P1/P4 + 用户确认; `AF7` |
-| USART2 RX | `PB11` | `USART2_RX` | 3.3V TTL USART 接收 | CN1 pin 3 | 原理图 P1/P4 + 用户确认; `AF7` |
-| USART0 TX | `PA9` | `USART0_TX` | 3.3V TTL USART 发送 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; `AF7`; H7 与 COM4/CH340 现场确认; 待 DMA |
-| USART0 RX | `PA10` | `USART0_RX` | 3.3V TTL USART 接收 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; `AF7`; H7 与 COM4/CH340 现场确认; 待 DMA |
-| OLED DATA | `PB9` | `OLED_DAT` | OLED 数据线;项目技术栈按 I2C OLED 规划 | OLED1 SDA/DAT | 原理图 P1/P2 + 用户确认; `I2C0_SDA`, `AF4`; 待上拉/板测 |
-| OLED CLK | `PB8` | `OLED_CLK` | OLED 时钟线;项目技术栈按 I2C OLED 规划 | OLED1 SCL/CLK | 原理图 P1/P2 + 用户确认; `I2C0_SCL`, `AF4`; 待上拉/板测 |
-| SPI Flash MOSI | `PB15` | `SPI_MOSI` | SPI 主出从入 | GD25Q40E U4 SI/IO0 | 原理图 P1/P2 + 用户确认; `SPI1_MOSI`, `AF5`; 待板测 |
-| SPI Flash MISO | `PB14` | `SPI_MISO` | SPI 主入从出 | GD25Q40E U4 SO/IO1 | 原理图 P1/P2 + 用户确认; `SPI1_MISO`, `AF5`; 待板测 |
-| SPI Flash SCK | `PB13` | `SPI_SCK` | SPI 时钟输出 | GD25Q40E U4 CLK | 原理图 P1/P2 + 用户确认; `SPI1_SCK`, `AF5`; 待板测 |
-| SPI Flash CS | `PB12` | `FLASH_CS` | GPIO 输出,低有效片选 | GD25Q40E U4 CS | 原理图 P1/P2 + 用户确认; 项目使用普通 GPIO CS,不使用 `SPI1_NSS`; 待板测 |
+| SD DAT0 | `PC8` | `SD_DAT0` | SDIO 4-bit 双向数据 | TF 卡 DAT0 | 原理图 P1/P2 + 用户确认; `SDIO_D0`, `AF12`;硬件已由用户裸机确认;SDIO/DMA/FatFs 归 M3 |
+| SD DAT1 | `PC9` | `SD_DAT1` | SDIO 4-bit 双向数据 | TF 卡 DAT1 | 原理图 P1/P2 + 用户确认; `SDIO_D1`, `AF12`;硬件已由用户裸机确认;SDIO/DMA/FatFs 归 M3 |
+| SD DAT2 | `PC10` | `SD_DAT2` | SDIO 4-bit 双向数据 | TF 卡 DAT2 | 原理图 P1/P2 + 用户确认; `SDIO_D2`, `AF12`;硬件已由用户裸机确认;SDIO/DMA/FatFs 归 M3 |
+| SD DAT3 | `PC11` | `SD_DAT3` | SDIO 4-bit 双向数据/片选复用网络 | TF 卡 DAT3/CS | 原理图 P1/P2 + 用户确认; `SDIO_D3`, `AF12`;硬件已由用户裸机确认;SDIO/DMA/FatFs 归 M3 |
+| SD CLK | `PC12` | `SD_CLK` | SDIO 时钟输出 | TF 卡 CLK | 原理图 P1/P2 + 用户确认; `SDIO_CK`, `AF12`;硬件已由用户裸机确认;SDIO 初始化归 M3 |
+| SD CMD | `PD2` | `SD_CMD` | SDIO 命令双向线 | TF 卡 CMD/DI | 原理图 P1/P2 + 用户确认; `SDIO_CMD`, `AF12`;硬件已由用户裸机确认;SDIO/DMA 归 M3 |
+| SD card detect | `PE2` | `SD_CD` | GPIO 输入;原理图有 10k 上拉,插卡检测按低有效理解 | TF 卡 CD | 原理图 P1/P2 + 用户确认;硬件已由用户裸机确认;卡检测与热插拔策略归 M3/M5 |
+| USART1 TX | `PA2` | `USART1_TX` | USART 发送 | H6 中间左侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; `AF7`; H6 RS485 路由已现场确认;USART1 BSP/DMA 归 M3 |
+| USART1 RX | `PA3` | `USART1_RX` | USART 接收 | H6 中间右侧;可路由到 MAX3485 或 SP3232 | 原理图 P1/P4 + 用户确认; `AF7`; H6 RS485 路由已现场确认;USART1 BSP/DMA 归 M3 |
+| RS485 方向控制 | `PA1` | `485_CS` | GPIO 输出;图中同时连接 MAX3485 `RE#`/`DE`,低为接收、高为发送 | MAX3485 U12 | 原理图 P1/P4 + 用户确认;PA1/485_CS 连接已确认;方向控制驱动归 M3 |
+| USART2 TX | `PB10` | `USART2_TX` | 3.3V TTL USART 发送 | CN1 pin 2 | 原理图 P1/P4 + 用户确认; `AF7`;USART2 BSP 归 M3 |
+| USART2 RX | `PB11` | `USART2_RX` | 3.3V TTL USART 接收 | CN1 pin 3 | 原理图 P1/P4 + 用户确认; `AF7`;USART2 BSP 归 M3 |
+| USART0 TX | `PA9` | `USART0_TX` | 3.3V TTL USART 发送 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; `AF7`; H7 与 COM4/CH340 现场确认;USART0 BSP/DMA 归 M3 |
+| USART0 RX | `PA10` | `USART0_RX` | USART 接收 | H7 → 板载 CH340C | 原理图 P1/P4 + 用户确认; `AF7`; H7 与 COM4/CH340 现场确认;USART0 BSP/DMA 归 M3 |
+| OLED DATA | `PB9` | `OLED_DAT` | OLED 数据线;项目技术栈按 I2C OLED 规划 | OLED1 SDA/DAT | 原理图 P1/P2 + 用户确认; `I2C0_SDA`, `AF4`;硬件已由用户裸机确认;I2C0/SSD1306/DisplayTask 归 M3 |
+| OLED CLK | `PB8` | `OLED_CLK` | OLED 时钟线;项目技术栈按 I2C OLED 规划 | OLED1 SCL/CLK | 原理图 P1/P2 + 用户确认; `I2C0_SCL`, `AF4`;硬件已由用户裸机确认;I2C0/SSD1306/DisplayTask 归 M3 |
+| SPI Flash MOSI | `PB15` | `SPI_MOSI` | SPI 主出从入 | GD25Q40E U4 SI/IO0 | 原理图 P1/P2 + 用户确认; `SPI1_MOSI`, `AF5`;硬件已由用户裸机确认;SPI1 原始驱动归 M3 |
+| SPI Flash MISO | `PB14` | `SPI_MISO` | SPI 主入从出 | GD25Q40E U4 SO/IO1 | 原理图 P1/P2 + 用户确认; `SPI1_MISO`, `AF5`;硬件已由用户裸机确认;SPI1 原始驱动归 M3 |
+| SPI Flash SCK | `PB13` | `SPI_SCK` | SPI 时钟输出 | GD25Q40E U4 CLK | 原理图 P1/P2 + 用户确认; `SPI1_SCK`, `AF5`;硬件已由用户裸机确认;SPI1 原始驱动归 M3 |
+| SPI Flash CS | `PB12` | `FLASH_CS` | GPIO 输出,低有效片选 | GD25Q40E U4 CS | 原理图 P1/P2 + 用户确认;项目使用普通 GPIO CS,不使用 `SPI1_NSS`;硬件已由用户裸机确认;CS/读 ID/原始读写归 M3 |
 
 #### M0 时钟树初步确认（2026-08-16）
 
@@ -203,6 +203,8 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← 后续 DMA/定时器通道静态�
 
 > 以下记录表示用户现场观察、插接或识别结果,不等同于 USART/RS485 软件收发已实现,也不替代断电万用表通断测试。
 
+> **补充边界（2026-08-17）:** 用户说明这块板此前已经通过裸机程序确认过全部板载硬件,包括 LED、按键、TF 卡、OLED、SPI Flash 以及串口/跳线接口。因此下表中的“尚未证明”只表示本仓库当前没有重复执行该硬件实验,不再作为 M0 的阻塞项;软件驱动、DMA、中断、任务和接口回归统一放到 M3/M4。
+
 | 项目 | 已确认结果 | 尚未证明 |
 |---|---|---|
 | 最小系统 | 现有 `PD8→LED1` 闪灯程序运行正常 | LED2~LED6 的逐路板测 |
@@ -215,17 +217,25 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← 后续 DMA/定时器通道静态�
 
 - 已创建 `BSP/board_config.h`，统一记录 LED、按键、USART、RS485 方向控制、I2C、SPI、SDIO、ADC 和 DAC 的板级端口、引脚、复用功能或 ADC 通道宏。
 - 已将 LED GPIO 时钟宏 `BOARD_LED_GPIO_CLK` 纳入板级配置；`User/src/main.c` 通过 `board_config.h` 获取 LED1 的端口、引脚和 GPIO 时钟。
-- LED1 已下载到实物板并验证正常闪烁；LED2~LED6 尚未逐路板测。
-- `main.c` 已使用当前 GCC 参数完成单文件编译验证；本阶段尚未完成所有外设驱动的整体构建和板级联调。
+- 用户已确认 LED1~LED6、KEY1~KEY6、TF 卡、OLED、SPI Flash/GD25Q40E 以及 H6/H7、CN1/CN2/CN3 的板级硬件此前均已用裸机程序确认；当前仓库只保留 LED1 的最小复现，不重复扩展 M0 硬件测试。
+- `main.c` 已使用当前 GCC 参数完成单文件编译验证；所有外设驱动的整体构建、RTOS 任务接入和软件回归统一放到 M3/M4。
 - 本阶段相关代码、板级配置和项目文档已提交到 GitHub；Keil 工程已加入 `BSP` 头文件包含路径。
 
-#### 当前 M0 未闭合项
+#### APP 层 LED 文件整理（2026-08-17）
 
-- 当前项目涉及的 AF 编号已经依据本地 `GD32F470xxDatasheet_Rev2.1.pdf` 核对;PC0/PC1/PA4 的 ADC/DAC 通道和功能也已确认,仍需在实现前完成 ADC1 实例、初始化参数和板测。
-- DMA 请求映射已依据 GD32F4xx 用户手册查明;推荐 `USART1-RX→DMA0/CH5`、`USART0-RX→DMA1/CH5`、`ADC1→DMA1/CH2`、`SDIO→DMA1/CH6`;仍需在实现阶段完成初始化、缓冲区链接位置和中断验证。
-- 依据 NVIC 设计完成 USART IDLE、DMA、EXTI、RTC、SDIO 和 SysTick 的优先级表。
-- 仍需断电使用万用表核对 H6/H7 跳线方向、CN1/CN2/CN3 针脚编号、LED/KEY/TF/Flash/OLED 实物连通性;本次现场确认尚未替代该通断测试。
-- 外部 Flash 型号与容量已按用户指定冻结为 `GD25Q40E`(4Mbit/512KB);用途方向确定为参数/告警及后续可选升级包/备份镜像,具体地址分区不在当前 M0 冻结。仍需在后续 SPI 驱动阶段读回 `0x9F` 的 `0xC84013` 并完成断电通断测试,在此之前不视为硬件验收完成。
+- 已删除 `User/src/led_app.c` 中的正弦查表、软件 PWM 和波浪呼吸实现，避免把持续刷新和波形逻辑带入当前工程。
+- 当前 LED 应用文件已迁移到 `APP/led_app.c` 和 `APP/led_app.h`；`User/` 只保留主循环、SysTick 和中断入口等基础文件。
+- `APP/led_app.c` 当前只作为应用层 LED 演示/接口保留；Bootloader 专属 LED 指示模块尚未创建，也没有接入升级状态机。
+- 六级累计进度、校验慢闪和失败双闪接口暂作为后续状态显示接口保留，真正用于升级必须等 M1/M6 建立独立 Bootloader 后再接入。
+- OLED 百分比显示、升级包总长度和已写入字节数尚未接入当前工程，属于后续 M6 升级状态机工作。
+
+#### M0 已闭合；后续软件实现项（不再阻塞 M0）
+
+- 当前项目涉及的 AF 编号以及 PC0/PC1/PA4 的 ADC/DAC 通道已依据本地 `GD32F470xxDatasheet_Rev2.1.pdf` 核对;ADC/DAC 初始化和闭环代码按 M4 实现。
+- DMA 请求映射已依据 GD32F4xx 用户手册查明;推荐 `USART1-RX→DMA0/CH5`、`USART0-RX→DMA1/CH5`、`ADC1→DMA1/CH2`、`SDIO→DMA1/CH6`;初始化、缓冲区链接位置和中断验证按 M3/M4 实现。
+- NVIC 资源表已完成冻结;USART IDLE、DMA、EXTI、RTC、SDIO 和 SysTick 的实际中断接入按对应 M3/M4 外设实现。
+- H6/H7、CN1/CN2/CN3 是已确认的硬件路由/连接器,没有独立的“连接器驱动”;M3 实现对应 USART0/USART1/USART2、PA1 RS485 方向控制和收发适配。
+- 外部 Flash 型号与容量已按用户指定冻结为 `GD25Q40E`（4Mbit/512KB）;M3 完成 SPI1、CS、读 ID、原始读写/擦除驱动,M5 再实现 Flash KV/参数告警存储,M6 再决定升级包/备份镜像用途和分区。
 
 **验收关卡:** 资源表完成且**无冲突**(DMA 通道互斥、EXTI 线号互斥、NVIC 优先级分层、Flash 边界 4KB 页对齐、`fmc_page_erase()` 适用)。
 
@@ -277,7 +287,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 | CLI Shell | Middleware | 命令表分发/参数解析/非法输入 | 《01》三~五章指令集 |
 | Flash KV | Middleware/FlashKV | 追加写/提交标志/双扇区 GC 流程 | 《02》4.5,PC 上 mock raw Flash |
 | 协议编解码 | Middleware/Protocol | 自定义帧逐字段编解码 + Modbus RTU | 《01》七/八章 |
-| ebtn | Middleware/Ebtn | 去抖/单击/长按/KEEPALIVE 事件 | 《01》十一-2 |
+| ebtn 纯 C 机制（可选） | Middleware/Ebtn | 去抖/单击/长按/KEEPALIVE 事件的无硬件核心测试 | 《01》十一-2；GPIO 扫描、事件投递和 FreeRTOS 接入统一在 M3 |
 | 升级序列化 | Common | firmware_header/manifest/upgrade_meta 逐字段编解码 | 《01》十二-2/10 |
 
 **产出文件:** 各组件 `.c/.h` + PC 测试工程(`test/` 目录,不占 MCU 工程)。
@@ -292,18 +302,23 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **动作清单:**
 
-1. 移植 FreeRTOS:heap_4 16KB 池,SysTick 交还给 FreeRTOS 作 tick(《01》十六-5 内存预算);
-2. 按《01》十六-1 建**七任务空壳**(Protocol/Sample/Storage/Alarm/Control/Display/Health,优先级 5/4/3/3/3/2/5,栈 256/256/512/256/256/256/128 words);
-3. 按《01》十六-2 建全部队列/事件组/软定时器(容量照表:8×24B 请求队列等);
+1. 移植 FreeRTOS:启用静态分配、关闭动态分配(`configSUPPORT_STATIC_ALLOCATION=1`,`configSUPPORT_DYNAMIC_ALLOCATION=0`),不编译/不链接 `heap_4.c`;SysTick 交还给 FreeRTOS 作 tick(《01》十六-5 内存预算);
+2. 按《01》十六-1 使用 `xTaskCreateStatic()` 建**七任务空壳**(Protocol/Sample/Storage/Alarm/Control/Display/Health,优先级 5/4/3/3/3/2/5,栈 256/256/512/256/256/256/128 words),每个任务显式提供 `StaticTask_t` 和 `StackType_t[]`;
+3. 按《01》十六-2 使用 `xQueueCreateStatic()`、`xEventGroupCreateStatic()`、`xSemaphoreCreateMutexStatic()` 和 `xTimerCreateStatic()` 建全部队列/事件组/互斥锁/软件定时器(容量照表:8×24B 请求队列等),明确 ISR 到任务的通知路径和共享资源保护;
 4. IWDG(5s)+ HealthTask 喂狗链:全部任务心跳正常才喂狗(《01》十六-4);
-5. FatFs 在 StorageTask 上下文 mount,验证"TF 卡单一所有权"模型;
-6. DisplayTask 以 10ms 按键扫描 / 500ms 显示周期跑空显示模型(《01》十六-1)。
+5. **完成 LED1~LED6 软件驱动与应用状态接口:**复用 `BSP/board_config.h` 的 `PD8~PD13`,提供 `board_led_set()` 和状态/累计进度显示接口;不再在 M0 扩展裸机灯效;
+6. **完成 KEY1~KEY6 软件链路:**GPIO 输入初始化、低有效读取、定时扫描/消抖、ebtn 事件转换和 FreeRTOS 队列投递;M2 若保留 ebtn 仅做纯 C 核心测试;
+7. **完成 USART 与板级接口适配:**USART0(`PA9/PA10`、H7、板载 CH340/COM4)、USART1(`PA2/PA3`、H6、RS232/RS485)、USART2(`PB10/PB11`、CN1);同时实现 PA1 `485_CS` 的 RS485 收发方向控制。CN2/CN3 只对应 H6 后端的 RS485/RS232 物理接口,不新增独立连接器驱动;
+8. **完成 OLED 驱动链路:**I2C0(`PB8/PB9`,AF4) 原始传输、SSD1306 初始化/刷新和 DisplayTask 单一所有权;
+9. **完成 SPI Flash/GD25Q40E 驱动链路:**SPI1(`PB13~PB15`,AF5)+普通 GPIO CS(`PB12`),实现复位、JEDEC `0x9F` 读 ID、状态寄存器、页写、读和扇区擦除;M3 只做原始驱动,Flash KV 业务放 M5;
+10. **完成 TF 卡底层链路:**SDIO(`PC8~PC12/PD2`,AF12)+`PE2` 卡检测、DMA/NVIC 接入、块读写和 FatFs 适配;StorageTask 负责 mount/unmount,验证 TF 单一所有权模型;
+11. DisplayTask 以按键扫描和显示刷新周期运行空业务模型;M3 只验证任务/驱动/所有权,采样业务、协议业务和告警业务分别进入 M4/M5。
 
-**产出文件:** `Tasks/*`、`App/`(composition root + 配置模型)、FreeRTOS 移植层、队列与事件组定义。
+**产出文件:** `Tasks/*`、`App/`(composition root + 配置模型)、`FreeRTOSConfig.h`、静态任务/队列/事件组/定时器内存定义、FreeRTOS 移植层、`BSP/` 的 LED/KEY/USART/RS485/I2C/OLED/SPI Flash/SDIO 驱动、`Middleware/FatFs` 适配层。
 
-**验收关卡(照搬《01》M3):** 连续 **24h 无看门狗复位、无任务栈溢出**。
+**验收关卡(照搬《01》M3):** 连续 **24h 无看门狗复位、无任务栈溢出**;六路 LED 和六路按键事件可被任务正确处理;USART0/1/2 路由与 PA1 方向控制可收发;OLED 可初始化刷新;GD25Q40E 可读出 JEDEC ID 并完成最小原始读写/擦除;TF 卡可检测、mount、读写和卸载。
 
-**风险点:** 栈大小与 heap 预算(十六-5)、喂狗豁免规则(十六-3.1)、DisplayTask 不得直接改业务状态。
+**风险点:** 静态任务栈与内核对象 RAM 预算(十六-5)、IdleTask/Timer Service Task 的静态内存回调、喂狗豁免规则(十六-3.1)、DisplayTask 不得直接改业务状态。
 
 ---
 
@@ -315,8 +330,8 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 1. ADC/DMA 100ms 常驻采集 + 3 次均值滤波,写入共享区(采集引擎常驻,《01》十三-5);
 2. DAC 输出 PA4 → 跳线 PC1 回读,打通输出-采集闭环(《02》3.4);
-3. USART0 CLI 全部指令(test / rtc config / rtc now / conf / ratio / limit / config save|read / protocol / id / baud / start / stop / hide / unhide / help),CLI 解析在 ControlTask 上下文,ISR 只收数据入队(《01》四-5);
-4. USART1 RS485 自定义二进制帧协议(帧格式/CRC16/应答超时/序列号,《01》七章);
+3. 基于 M3 已完成的 USART0 BSP 实现 CLI 全部指令(test / rtc config / rtc now / conf / ratio / limit / config save|read / protocol / id / baud / start / stop / hide / unhide / help),CLI 解析在 ControlTask 上下文,ISR 只收数据入队(《01》四-5);
+4. 基于 M3 已完成的 USART1/PA1 RS485 链路实现自定义二进制帧协议(帧格式/CRC16/应答超时/序列号,《01》七章);
 5. Modbus RTU 从站(03/04/06/10 功能码,寄存器映射《01》八章),`protocol_mode` 切换;
 6. **Python 回归测试脚本同步进场**:串口发帧/收帧/断言,覆盖正常帧 + 错误帧 + 异常帧。
 
@@ -328,13 +343,13 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 ## 八、M5:TF 卡与告警
 
-**目标:** 可靠落盘 + 配置原子导入 + 告警状态机。
+**目标:** 基于 M3 已完成的 TF/GD25Q40E 底层驱动,实现可靠落盘 + 配置原子导入 + 告警状态机。
 
 **动作清单:**
 
-1. 三类文件存储:sample/alarm 每文件 10 条滚动、命名规则、audit 上电次数自增(boot_00000N.log),关键记录 `f_sync()`(《01》六章);
+1. 通过 M3 的 SDIO + FatFs + StorageTask 单一所有权实现三类文件存储:sample/alarm 每文件 10 条滚动、命名规则、audit 上电次数自增(boot_00000N.log),关键记录 `f_sync()`(《01》六章);
 2. `config.ini` 原子导入:读全文件 → 临时结构解析校验 → 一次性替换 + Flash 原子写,任一行失败整组不生效(《01》三-1);
-3. `config save/read` 走 Flash KV(GD25Q40E sector 0/1 双扇区轮换,《02》4.5 候选分区方向);
+3. `config save/read` 在 M3 的 GD25Q40E 原始驱动之上实现 Flash KV(GD25Q40E sector 0/1 双扇区轮换,《02》4.5 候选分区方向);
 4. 告警状态机:连续 3 次超限 → ACTIVE(只触发一次)→ 滞回 0.05V → RECOVERED;LED3 / CSV / Flash 最近 10 条 / RS485 上报按模式联动(《01》九章);
 5. 拔卡降级/重挂载:检测拔卡停写不停采,重插恢复;写失败重试 3 次(100/300/900ms)后降级(《01》六-4)。
 
@@ -356,7 +371,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 2. TF 离线升级:统一暂存流程(staging_prepare → 剥头复制 → 校验 → 生成 manifest → STAGED_VALID → 共用 INSTALL)+ 失败包 `.failed` 隔离 + 成功包 `.applied` 幂等改名(《01》十二-6/9);
 3. 双槽元数据:68B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽时按 App/Backup manifest 恢复(《01》十二-10);
 4. 启动确认:TRIAL_PENDING → APP 满足五条件写 CONFIRMED;IWDG/HardFault 失败计数 ≥3 回滚;crash_marker 统一消费(《01》十二-5/9);
-5. OLED 升级进度(0~90% 接收 / 90~100% 校验搬运)+ LED 波浪呼吸(裸机 1ms 时基,《01》十一-4/5/6);
+5. OLED 升级进度(0~90% 接收 / 90~100% 校验搬运)+ LED 状态/进度指示(裸机 1ms 时基,无软件 PWM;《01》十一-4/5/6);
 6. 跳转 App 10 步序列与 FWDGT 接管(《01》十二-8、十六-4)。
 
 **产出文件:** `Bootloader/` 完整状态机、Common 的升级元数据/固件格式编解码、Python 打包工具(固件头 + 映像 + manifest 出厂四件套)。

@@ -21,6 +21,9 @@
 #define BOARD_LED6_PORT          GPIOD
 #define BOARD_LED6_PIN           GPIO_PIN_13
 
+#define BOARD_LED_ALL_PINS (BOARD_LED1_PIN | BOARD_LED2_PIN | BOARD_LED3_PIN \
+                            | BOARD_LED4_PIN | BOARD_LED5_PIN | BOARD_LED6_PIN)
+
 #define BOARD_LED_GPIO_CLK       RCU_GPIOD
 #define BOARD_LED_ACTIVE_HIGH    1U
 

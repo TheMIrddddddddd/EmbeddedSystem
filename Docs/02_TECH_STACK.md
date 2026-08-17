@@ -145,6 +145,7 @@
 
 - **原理**:抢占式实时内核,任务/队列/信号量/互斥锁/事件组/软件定时器
 - **项目用途**:APP 主架构,7 任务调度(Protocol/Sample/Storage/Alarm/Control/Display/Health,详见《01_PROJECT_OVERVIEW.md》第十六章)
+- **内存策略**:全部任务、队列、事件组、互斥锁、信号量和软件定时器使用静态 API;`configSUPPORT_STATIC_ALLOCATION=1`、`configSUPPORT_DYNAMIC_ALLOCATION=0`,不编译/不链接 `heap_4.c`
 - **简历价值**: "基于 FreeRTOS 的多任务架构,队列/事件组/互斥锁解耦模块"
 
 ### 4.2 FatFs(文件系统)

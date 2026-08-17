@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\BSP</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\APP;..\BSP</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -572,12 +572,27 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>APP</GroupName>
+          <Files>
+            <File>
+              <FileName>led_app.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\APP\led_app.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>BSP</GroupName>
           <Files>
             <File>
               <FileName>board_config.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\BSP\board_config.h</FilePath>
+            </File>
+            <File>
+              <FileName>board_gpio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_gpio.c</FilePath>
             </File>
           </Files>
         </Group>
