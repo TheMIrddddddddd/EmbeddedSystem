@@ -3,7 +3,7 @@
 > 文档版本:V1.0 | 日期:2026-08-09
 > 定位:本文是《01_PROJECT_OVERVIEW.md》第十五章 M0~M7 里程碑的**执行级展开**——把每个里程碑翻译成「动作清单 → 产出文件 → 依赖 → 卡点 → 验收关卡」。
 > 使用方式:开发时照表执行,验收时对照《01》第十四章(A-01~Q-02)与第十四-2(稳定性)逐条验证;技术原理见《02_TECH_STACK.md》。
-> 当前工程状态:单工程裸机闪灯 demo(0x08000000 全 Flash,Keil/EIDE 双工具链可编译),尚未拆分 Boot/App,业务代码为零。
+> 当前工程状态:单工程裸机闪灯 demo(0x08000000 全 Flash,Keil/EIDE 双工具链配置保留),已完成 `BSP/board_config.h` 初版和 LED1 实物验证;尚未拆分 Boot/App,业务代码为零。
 
 ---
 
@@ -92,8 +92,8 @@ M7 低功耗 + 总验收
 **产出文件:**
 
 ```
-BSP/Boards/gd32f470ve_v1/board_config.h    ← 引脚宏打包(参考 h743mini board_config.h 风格)
-BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← DMA/定时器通道静态表 + 冲突检查
+BSP/board_config.h                         ← 当前板级引脚/时钟宏配置
+BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← 后续 DMA/定时器通道静态表 + 冲突检查
 ```
 
 **写法参考(借用 PX4 h743mini,只借"怎么写",不借 OS 机制):**
@@ -114,7 +114,7 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← DMA/定时器通道静态表 + �
 
 | 功能 | GD32F470 GPIO | 板级网络/器件 | 方向/电气语义 | 连接器或路由 | 来源/状态 |
 |---|---|---|---|---|---|
-| LED1~LED6 | `PD8~PD13` | `LED1~LED6` | GPIO 输出;当前软件定义为高电平点亮、低电平熄灭 | H2: 6→LED1、5→LED2、4→LED3、3→LED4、2→LED5、1→LED6 | 原理图 P2 + `User/src/main.c`; 2026-08-15 已现场验证 LED1 闪烁; LED2~LED6 待板测 |
+| LED1~LED6 | `PD8~PD13` | `LED1~LED6` | GPIO 输出;当前软件定义为高电平点亮、低电平熄灭 | H2: 6→LED1、5→LED2、4→LED3、3→LED4、2→LED5、1→LED6 | 原理图 P2 + `BSP/board_config.h`; LED1 已现场验证闪烁; LED2~LED6 待板测 |
 | KEY1~KEY6 | `PE15、PE13、PE11、PE9、PE7、PB0` | `FUN_KEY1~FUN_KEY6` | GPIO 输入;外部 10k 上拉到 3V3,按下接 DGND,有效低 | H3: 6→KEY1、5→KEY2、4→KEY3、3→KEY4、2→KEY5、1→KEY6 | 原理图 P1/P2 + 用户确认; GPIO 默认功能,待板测 |
 | ADC CH0 | `PC0` | `ADC1` 规划使用 | 模拟输入 | VR1 滑动端 → `ADC`; `ADC012_IN10` | 原理图 P1/P2 + 用户确认; ADC 通道 10 已确认; ADC1 实例/DMA/板测待完成 |
 | DAC CH1 | `PA4` | `DAC0_OUT0` | 模拟输出 | 设计闭环为 `PA4` → 外部跳线 → `PC1` | 原理图 P1 + 项目规格; `DAC0_OUT0` 已确认; 板测待完成 |
@@ -210,6 +210,14 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← DMA/定时器通道静态表 + �
 | USART1 到 RS485 | H6 使用 `1-3`、`2-4`; `485-T↔PA3`、`485-R↔PA2` | USART1 初始化、PA1 方向控制软件、实际收发和 DMA 尚未验证 |
 | RS485 方向控制 | `PA1=485_CS` 连接关系已在原理图中确认 | PA1 高低电平的板级波形/软件实测 |
 | RS485 外部接口 | CN2: `1=G/DGND`、`2=A/A+`、`3=B/B-` | 外部设备、总线终端和实际通信尚未接入测试 |
+
+#### M0 本阶段已完成（2026-08-17）
+
+- 已创建 `BSP/board_config.h`，统一记录 LED、按键、USART、RS485 方向控制、I2C、SPI、SDIO、ADC 和 DAC 的板级端口、引脚、复用功能或 ADC 通道宏。
+- 已将 LED GPIO 时钟宏 `BOARD_LED_GPIO_CLK` 纳入板级配置；`User/src/main.c` 通过 `board_config.h` 获取 LED1 的端口、引脚和 GPIO 时钟。
+- LED1 已下载到实物板并验证正常闪烁；LED2~LED6 尚未逐路板测。
+- `main.c` 已使用当前 GCC 参数完成单文件编译验证；本阶段尚未完成所有外设驱动的整体构建和板级联调。
+- 本阶段相关代码、板级配置和项目文档已提交到 GitHub；Keil 工程已加入 `BSP` 头文件包含路径。
 
 #### 当前 M0 未闭合项
 
