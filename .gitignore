@@ -2,6 +2,7 @@
 MDK/Objects/
 MDK/Listings/
 MDK/*.uvguix*
+MDK/*_codex.log
 
 # EIDE 编译产物
 MDK/build/
