@@ -34,6 +34,7 @@ OF SUCH DAMAGE.
 
 #include "gd32f4xx_it.h"
 #include "systick.h"
+#include "board_usart.h"
 
 /*!
     \brief      this function handles NMI exception
@@ -148,4 +149,24 @@ void PendSV_Handler(void)
 void SysTick_Handler(void)
 {
     delay_decrement();
+}
+
+void USART0_IRQHandler(void)
+{
+    board_usart0_irq_handler();
+}
+
+void DMA1_Channel2_IRQHandler(void)
+{
+    board_usart0_rx_dma_irq_handler();
+}
+
+void USART1_IRQHandler(void)
+{
+    board_usart1_rs485_irq_handler();
+}
+
+void DMA0_Channel5_IRQHandler(void)
+{
+    board_usart1_rs485_rx_dma_irq_handler();
 }

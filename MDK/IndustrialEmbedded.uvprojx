@@ -80,9 +80,9 @@
             <nStopB2X>0</nStopB2X>
           </BeforeMake>
           <AfterMake>
-            <RunUserProg1>0</RunUserProg1>
+            <RunUserProg1>1</RunUserProg1>
             <RunUserProg2>0</RunUserProg2>
-            <UserProg1Name></UserProg1Name>
+            <UserProg1Name>D:\keil5\ARM\ARMCC\bin\fromelf.exe --bin -o "$L@L.bin" "#L"</UserProg1Name>
             <UserProg2Name></UserProg2Name>
             <UserProg1Dos16Mode>0</UserProg1Dos16Mode>
             <UserProg2Dos16Mode>0</UserProg2Dos16Mode>
@@ -338,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_STDPERIPH_DRIVER</Define>
+              <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\APP;..\BSP</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\APP;..\BSP;..\Middleware</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -593,6 +593,21 @@
               <FileName>board_gpio.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BSP\board_gpio.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_usart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_usart.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware</GroupName>
+          <Files>
+            <File>
+              <FileName>ringbuffer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\ringbuffer.c</FilePath>
             </File>
           </Files>
         </Group>
