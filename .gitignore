@@ -3,6 +3,8 @@ MDK/Objects/
 MDK/Listings/
 MDK/*.uvguix*
 MDK/*_codex.log
+MDK/*.log
+MDK/*.uvoptx
 
 # EIDE 编译产物
 MDK/build/
