@@ -62,6 +62,10 @@ virtualFolder:
       files:
         - path: ../BSP/board_config.h
         - path: ../BSP/board_gpio.c
+        - path: ../BSP/board_usart.c
+    - name: Middleware
+      files:
+        - path: ../Middleware/ringbuffer.c
       folders: []
 dependenceList: []
 outDir: build
@@ -73,6 +77,7 @@ targets:
       defineList:
         - USE_STDPERIPH_DRIVER
         - GD32F470
+        - NDEBUG
       incList:
         - .
         - ../Driver/CMSIS/GD/GD32F4xx/Include
@@ -81,6 +86,7 @@ targets:
         - ../User/inc
         - ../APP
         - ../BSP
+        - ../Middleware
         - .cmsis/include
         - RTE/_IndustrialEmbedded
       libList: []
