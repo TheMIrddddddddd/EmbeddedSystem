@@ -63,6 +63,7 @@ virtualFolder:
         - path: ../BSP/board_config.h
         - path: ../BSP/board_gpio.c
         - path: ../BSP/board_usart.c
+      folders: []
     - name: Middleware
       files:
         - path: ../Middleware/ringbuffer.c
