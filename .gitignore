@@ -9,6 +9,8 @@ MDK/*.uvoptx
 # EIDE 编译产物
 MDK/build/
 MDK/.eide/
+!MDK/.eide/
+!MDK/.eide/**
 MDK/.cmsis/
 MDK/.vscode/
 
