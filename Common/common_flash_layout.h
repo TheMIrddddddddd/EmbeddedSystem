@@ -27,4 +27,7 @@
 #define BACKUP_MANIFEST_ADDR        0x08051FC0UL
 #define STAGING_MANIFEST_ADDR       0x08071FC0UL
 
+/* 芯片 SRAM 范围上界(SRAM_BASE 由 gd32f4xx.h 提供,此处仅定义库没有的上界) */
+#define SRAM_TOP                   0x20030000UL
+
 #endif /* COMMON_FLASH_LAYOUT_H */
