@@ -56,7 +56,7 @@ virtualFolder:
       folders: []
     - name: APP
       files:
-        - path: ../APP/led_app.c
+        - path: ../App/led_app.c
       folders: []
     - name: BSP
       files:
@@ -84,7 +84,7 @@ targets:
         - ../Driver/CMSIS
         - ../Libraries/Include
         - ../User/inc
-        - ../APP
+        - ../App
         - ../BSP
         - ../Middleware
         - .cmsis/include

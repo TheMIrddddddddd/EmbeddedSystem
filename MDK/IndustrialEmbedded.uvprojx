@@ -572,16 +572,6 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>APP</GroupName>
-          <Files>
-            <File>
-              <FileName>led_app.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\APP\led_app.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
           <GroupName>BSP</GroupName>
           <Files>
             <File>
@@ -593,6 +583,16 @@
               <FileName>board_gpio.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BSP\board_gpio.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>App</GroupName>
+          <Files>
+            <File>
+              <FileName>led_app.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\led_app.c</FilePath>
             </File>
           </Files>
         </Group>
