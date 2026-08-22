@@ -269,6 +269,13 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **验收关卡(照搬《01》M1):** 上电 Boot 5s 后跳 App,OLED/LED 显示切换;两个工程均可编译烧录。
 
+**M1 板级验证记录(实测):**
+
+- 链路实测通过:上电 Boot 0.5Hz×5s → 跳 App 2Hz,确认 VTOR 重定位、中断向量化、跳转前 `__enable_irq()`(缺失则 SysTick 中断被 PRIMASK 屏蔽,`delay_1ms` 卡死)三个知识点全部成立;
+- ⚠️ **元数据擦除实测(双工具复现)**:OpenOCD(stm32f2x 驱动,把 GD32F470 按 STM32F42x/43x 识别,扇区表 4×16KB+4×64KB+3×128KB 与手册一致)与 Keil(`GD32F4xx_512KB.FLM`)烧录 App 时**均按整扇区擦除**——App 覆盖扇区 4(64KB)+ 扇区 5(128KB)全擦,扇区 4 内的 Meta A/B 槽(0x08010000~0x08011FFF)**必被一并擦除**;
+- 证据:特征 0x5A 写入 Meta A/B → 分别用两工具烧 App → 读回 8KB 全 0xFF(实验产物在 `D:\backup\meta_test\`);
+- **结论(进入设计约束):** 内部 Meta 槽与 App 同扇区 → 工具烧 App 必丢元数据 → **内部 Meta 方案废弃,元数据外部化至 GD25Q40E 固定元数据槽**(见 M5 外部分区协调点与 M6),内部 0x08010000~0x08011FFF 退役为保留区。
+
 **卡点:** 若采用当前候选的 64KB Bootloader 区,发布映像 `Code + RO-data + RW-data load` 目标为 ≤ 60KB;最终容量以 M1 实际构建和跳转验证为准,若后期 SDIO/FatFs/OLED 撑爆,回到 M0 重新划区,不允许砍校验功能硬塞。
 
 ---
@@ -355,6 +362,8 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **GD25Q40E 角色边界:** M5 先实现参数/告警等业务存储;升级包和备份镜像属于后续 M6 升级流程的可选外部存储,具体地址、格式和掉电策略等做到对应阶段再确定。
 
+**外部分区协调点(实测结论引入,强制):** M5 定稿 GD25Q40E 外部分区表时,**必须为 M6 元数据槽预留独立扇区**(建议 sector 2/3 双 4KB 槽轮换),不得把分区表全部划给业务 KV;M1 已实测内部 Meta 槽会被工具烧 App 整扇区擦除,元数据只能外部化,故该预留为硬约束,地址随 M5 分区表冻结写入 Common 宏。
+
 **验收关卡:** P 类验收项(P-01~P-03、Q-01~Q-02)+ 十三-5 使能位联动规则。
 
 **风险点:** APP 的 TF/GD25Q40E 参数/告警访问必须只在 StorageTask 上下文,ControlTask/AlarmTask 只发请求;M6 Bootloader 访问 GD25Q40E 仅允许发生在升级状态机的独占阶段(《01》三-4 存储分域强制项)。
@@ -363,13 +372,13 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 ## 九、M6:Bootloader(全程最硬核)
 
-**目标:** 在内部 Flash Bootloader/App 链路之上实现在线 IAP + TF 离线升级 + 可选 GD25Q40E 升级包/备份镜像 + 掉电恢复 + 启动确认回滚,全部按《01》十二章状态机实现。
+**目标:** 在内部 Flash Bootloader/App 链路之上实现在线 IAP + TF 离线升级 + GD25Q40E 升级包/备份镜像 + **元数据(升级状态)外部化固定槽** + 掉电恢复 + 启动确认回滚,全部按《01》十二章状态机实现。内部 Meta 槽(0x08010000/0x08011000)因 M1 实测(工具烧 App 整扇区擦除)已废弃,此区域退役为保留区,元数据一律存 GD25Q40E 固定元数据双槽(Boot 升级状态机阶段经 SPI1 独占访问,SPI 原始驱动 M3 提供)。
 
 **动作清单(严格按文档顺序):**
 
 1. 五阶段在线升级:0x0500 ENTER_BOOT(仅 APP)/ 0x0501 BEGIN / 0x0502 DATA(先写后 ACK)/ 0x0503 END / 0x0504 INSTALL,命令职责表与状态机命令限制照《01》十二-4;
 2. TF 离线升级:统一暂存流程(staging_prepare → 剥头复制 → 校验 → 生成 manifest → STAGED_VALID → 共用 INSTALL)+ 失败包 `.failed` 隔离 + 成功包 `.applied` 幂等改名(《01》十二-6/9);
-3. 双槽元数据:68B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽时按 App/Backup manifest 恢复(《01》十二-10);
+3. 双槽元数据(存 GD25Q40E 固定元数据槽 A/B:68B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽时按 App/Backup manifest 恢复;《01》十二-10),槽地址随 M5 外部分区冻结;
 4. 启动确认:TRIAL_PENDING → APP 满足五条件写 CONFIRMED;IWDG/HardFault 失败计数 ≥3 回滚;crash_marker 统一消费(《01》十二-5/9);
 5. OLED 升级进度(0~90% 接收 / 90~100% 校验搬运)+ LED 状态/进度指示(裸机 1ms 时基,无软件 PWM;《01》十一-4/5/6);
 6. 跳转 App 10 步序列与 FWDGT 接管(《01》十二-8、十六-4)。

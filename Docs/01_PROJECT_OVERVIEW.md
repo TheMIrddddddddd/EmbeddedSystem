@@ -232,11 +232,11 @@ protocol_mode=0 alarm_mode=2(01 主动上报 / 02 被动存储,默认 02)
 
 | 存储域 | 存放内容 | 访问方 |
 |---|---|---|
-| **外部 SPI Flash(GD25Q40E,4Mbit/512KB)** | 业务配置(变比/阈值/采样周期/设备ID/波特率/协议模式)、告警记录(最近 10 条)、上电次数计数;后续可选保存升级包/备份镜像 | APP 的 StorageTask 负责参数/告警;Bootloader 仅在升级状态机阶段按需独占访问升级包/备份镜像 |
-| **内部 Flash 参数区(0x08010000~0x08011FFF,2 × 4KB 独立页:slot A / slot B)** | 升级状态(升级标志)、固件元数据(双槽记录)、试运行状态(TRIAL/CONFIRMED)、回滚计数 | Bootloader 与 APP 共享 |
+| **外部 SPI Flash(GD25Q40E,4Mbit/512KB)** | 业务配置(变比/阈值/采样周期/设备ID/波特率/协议模式)、告警记录(最近 10 条)、上电次数计数、**升级状态元数据(固定双槽,M6)**、后续可选保存升级包/备份镜像 | APP 的 StorageTask 负责参数/告警;Bootloader 仅在升级状态机阶段按需独占访问元数据槽/升级包/备份镜像 |
+| **内部 Flash 保留区(0x08010000~0x08011FFF,2 × 4KB 独立页:slot A / slot B)** | **已废弃(仅保留 M1 布局占位)**:实测两个烧录工具(OpenOCD stm32f2x 与 Keil GD32F4xx_512KB.FLM)烧 App 时均按整扇区擦除,该区与 App 同处扇区 4,元数据必被连擦 → 升级状态转存 GD25Q40E 固定元数据槽,此区退役 | (无访问方) |
 
 **规则:**
-- 业务参数走外部 Flash(独立存储、擦写不占用内部空间);Bootloader 和 App 的可执行映像仍在 MCU 内部 Flash;升级状态必须走内部参数区(Bootloader 在 APP 未运行时也能读写)
+- 业务参数走外部 Flash(独立存储、擦写不占用内部空间);Bootloader 和 App 的可执行映像仍在 MCU 内部 Flash;升级状态(元数据/试运行状态/回滚计数)存 GD25Q40E 固定元数据双槽,Bootloader 在升级状态机阶段经 SPI1 独占访问(SPI 原始驱动由 M3 提供)
 - APP 运行配置与升级状态互不干扰;升级固件不会触碰业务参数区
 - ControlTask/AlarmTask 只能向 StorageTask 发送持久化请求,不得直接擦除 GD25Q40E、执行 Flash KV GC 或持有 SPI 锁;Bootloader 访问外部 Flash 只允许发生在升级状态机的明确阶段
 
@@ -1058,12 +1058,14 @@ NORMAL
 ### 1、内部 Flash 分区(当前候选方案)
 
 > Bootloader 和 App 都在 GD32F470 内部 Flash 中运行。下面的地址用于 M1 双工程的初始布局，必须等链接脚本、镜像大小和跳转实测后再定稿；GD25Q40E 不作为复位后的直接执行区。
+>
+> **⚠️ M1 实测(双工具确认):** OpenOCD(stm32f2x 驱动)与 Keil(GD32F4xx_512KB.FLM)烧录 App 均按**整扇区**擦除,App 覆盖扇区 4+5 全擦。因此任何与 App 同处扇区 4 的槽位(0x08010000~0x08011FFF 的 slot A/B)都会在烧 App 时被连擦——下方参数区 slot A/B 已废弃,升级状态元数据外部化至 GD25Q40E 固定元数据槽(M6),此两槽仅保留为布局占位。
 
 | 区域 | 起始地址 | 结束地址 | 大小 |
 |---|---|---|---|
 | Bootloader 区 | 0x08000000 | 0x0800FFFF | 64KB |
-| 参数区 slot A | 0x08010000 | 0x08010FFF | 4KB(独立擦除页) |
-| 参数区 slot B | 0x08011000 | 0x08011FFF | 4KB(独立擦除页) |
+| 保留区 slot A(旧参数区,**已废弃**) | 0x08010000 | 0x08010FFF | 4KB(独立擦除页) |
+| 保留区 slot B(旧参数区,**已废弃**) | 0x08011000 | 0x08011FFF | 4KB(独立擦除页) |
 | App 区 | 0x08012000 | 0x08031FFF | 128KB |
 | App 备份区 | 0x08032000 | 0x08051FFF | 128KB |
 | 固件暂存区 | 0x08052000 | 0x08071FFF | 128KB |
@@ -1823,7 +1825,7 @@ SampleTask ──最新值快照──► DisplayTask(只读)
 | 资源 | 所有者 | 访问规则 |
 |---|---|---|
 | FatFs / TF 卡 | StorageTask | 唯一所有者,其他任务只发 Persistence 请求 |
-| 外部 Flash(GD25Q40E) | APP:StorageTask;Bootloader:升级状态机 | APP 侧 Persistence Service 独占参数/告警访问;Bootloader 仅在升级阶段独占访问升级包/备份镜像,其他任务不得直接擦除/GC/持 SPI 锁 |
+| 外部 Flash(GD25Q40E) | APP:StorageTask;Bootloader:升级状态机 | APP 侧 Persistence Service 独占参数/告警访问;Bootloader 仅在升级阶段独占访问元数据槽/升级包/备份镜像,其他任务不得直接擦除/GC/持 SPI 锁 |
 | SPI 总线(GD25Q40E) | 当前执行上下文内部驱动 | APP 与 Bootloader 不并行访问;切换执行上下文前完成外设收尾,未来多设备时由 BSP 总线驱动内部串行化 |
 | I2C 总线(OLED) | DisplayTask | 单一所有者;其他任务提交显示状态,不直接访问 I2C |
 | USART1(RS485) | ProtocolTask 发送/ISR 接收 | 发送互斥锁 |
