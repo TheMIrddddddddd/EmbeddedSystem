@@ -289,6 +289,14 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **卡点:** 若采用当前候选的 64KB Bootloader 区,发布映像 `Code + RO-data + RW-data load` 目标为 ≤ 60KB;最终容量以 M1 实际构建和跳转验证为准,若后期 SDIO/FatFs/OLED 撑爆,回到 M0 重新划区,不允许砍校验功能硬塞。
 
+#### M1 已闭合;后续软件实现项(不再阻塞 M1)
+
+- 六步动作清单全部完成(提交历史见 `m1/boot-app` 分支,a9f02fd ~ fd470bf);
+- **阶段 6 记录:** `User/` 退役——共享 `systick.c/h` + `gd32f4xx_it.h` 迁移至 `Common/`(双工程同源,git 识别为 rename);Keil App/Boot 工程文件引用与 include path、EIDE(App+legacy target)、BootEIDE 工程引用及 incList 全部同步清理,全工程 `User/` 残留引用为 0;
+- **阶段 5 记录:** GCC 分区链接脚本 `gd32f470xE_boot_flash.ld`(0x08000000/64K)与 `gd32f470xE_app_flash.ld`(0x08012000/128K)已入库;STM32CubeCLT arm-none-eabi-gcc 13.3.1 命令行 + EIDE GCC 两种方式实证,向量表/入口地址与 Keil AC5 产物三方一致;当前主力走 AC5(Keil/EIDE),GCC 配置保留备用;
+- **审查修复记录:** #2 MSP 最小栈顶 +8B、#5 跳转后防返回、#7 App 中断启用时机后移、#8 文档十步序与实现对齐(先校验后清理)、#12 manifest 地址公式化、#13 对齐规则措辞、#14 App include path 修正、#15 旧工程 Legacy 标记与身份表,均以分支提交落库;
+- 遗留(不阻塞,M2+ 处理):① 旧单工程保留为 `IndustrialEmbedded-Legacy` 存档,禁止用于 M1 烧录;② GCC syscall 桩(`_write/_read`)留待 M4 串口重定向实现;③ `LOAD segment RWX` 警告为 GD 模板 ld 固有,忽略;④ Keil FLM 页擦未单独实测(与 OpenOCD 同为"整扇区擦除"结论覆盖)。
+
 ---
 
 ## 五、M2:公共基础组件(纯 C,PC 单测)
