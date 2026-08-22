@@ -87,7 +87,7 @@ M7 低功耗 + 总验收
 | 2 | 时钟树表 | 25MHz HXTAL → PLL 240MHz;AHB/APB1/APB2 分频;USART/ADC/SPI/SDIO 时钟源;RTC = LSE 32.768k | 《02》2.1 |
 | 3 | DMA 通道表 | ADC1 / USART0-RX / USART1-RX / SDIO 各占 DMA 控制器与通道,**编译期冲突检查** | 《02》3.1/3.3 |
 | 4 | NVIC 优先级表 | USART IDLE、DMA、EXTI(按键)、RTC 闹钟、SDIO、SysTick 的抢占/子优先级 | 《01》十六 |
-| 5 | Flash 边界表 | Boot 64KB / slot A 4KB / slot B 4KB / App / Backup / Staging 各 128KB,全部 4KB 对齐 | 《01》十二-1(宏已给出) |
+| 5 | Flash 边界表 | Boot 64KB / 旧内部 Meta 保留区 / App / Backup / Staging;App/Backup/Staging manifest 预留区按契约定义,升级元数据双槽位于外部 GD25Q40E | 《01》十二-1(宏已给出) |
 
 **产出文件:**
 
@@ -237,7 +237,7 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← 后续 DMA/定时器通道静态�
 - H6/H7、CN1/CN2/CN3 是已确认的硬件路由/连接器,没有独立的“连接器驱动”;M3 实现对应 USART0/USART1/USART2、PA1 RS485 方向控制和收发适配。
 - 外部 Flash 型号与容量已按用户指定冻结为 `GD25Q40E`（4Mbit/512KB）;M3 完成 SPI1、CS、读 ID、原始读写/擦除驱动,M5 再实现 Flash KV/参数告警存储,M6 再决定升级包/备份镜像用途和分区。
 
-**验收关卡:** 资源表完成且**无冲突**(DMA 通道互斥、EXTI 线号互斥、NVIC 优先级分层、Flash 边界 4KB 页对齐、`fmc_page_erase()` 适用)。
+**验收关卡:** 资源表完成且**无冲突**(DMA 通道互斥、EXTI 线号互斥、NVIC 优先级分层、内部 Flash 可擦除边界与外部 GD25Q40E 分区职责明确)。
 
 ---
 
@@ -252,7 +252,7 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← 后续 DMA/定时器通道静态�
    Common/  BSP/Boards/gd32f470ve_v1/  Middleware/  Services/  Tasks/  App/  Bootloader/
    Libraries/(SPL,不动)  Driver/(CMSIS,不动)  User/(逐步废弃)
    ```
-2. **先建 Common 最小子集**:`common_flash_layout.h`(当前候选内部 Flash 地址宏 + MANIFEST 宏)——两个工程的链接脚本都引用它,最终地址以 M1 构建验证为准;
+2. **先建 Common 最小子集**:`common_flash_layout.h`(内部 Flash Boot/App/Backup/Staging 地址宏 + manifest 宏);外部 GD25Q40E 元数据槽地址属于 M5 分区契约,冻结后再加入对应 Common 存储定义;
 3. **拆出 Boot 工程**(Keil 主力):0x08000000 裸机,最小 LED + 5s 等待 + 跳转 App(跳转前按《01》十二-8 的 10 步序列:关中断/关 SysTick/反初始化/NVIC 清中断/校验 MSP 与复位向量/VTOR/MSP/跳转);
 4. **改造 App 工程**(Keil + EIDE):链接到 0x08012000,`SCB->VTOR = APP_BASE`,闪灯频率与 Boot 区分(如 2Hz vs 0.5Hz,肉眼可辨谁在跑);
 5. **双工具链对齐**:AC5 scatter 与 GCC `gd32f470xE_flash.ld` 都按统一分区产出,两边都能编译烧录;
@@ -272,7 +272,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 **M1 板级验证记录(实测):**
 
 - 链路实测通过:上电 Boot 0.5Hz×5s → 跳 App 2Hz,确认 VTOR 重定位、中断向量化、跳转前 `__enable_irq()`(缺失则 SysTick 中断被 PRIMASK 屏蔽,`delay_1ms` 卡死)三个知识点全部成立;
-- ⚠️ **元数据擦除实测(双工具复现)**:OpenOCD(stm32f2x 驱动,把 GD32F470 按 STM32F42x/43x 识别,扇区表 4×16KB+4×64KB+3×128KB 与手册一致)与 Keil(`GD32F4xx_512KB.FLM`)烧录 App 时**均按整扇区擦除**——App 覆盖扇区 4(64KB)+ 扇区 5(128KB)全擦,扇区 4 内的 Meta A/B 槽(0x08010000~0x08011FFF)**必被一并擦除**;
+- ⚠️ **元数据擦除实测(双工具复现)**:OpenOCD(stm32f2x 驱动,把 GD32F470 按 STM32F42x/43x 识别,扇区表 4×16KB+4×64KB+3×128KB 与手册一致)与 Keil(`GD32F4xx_512KB.FLM`)烧录 App 后,扇区 4 内的 Meta A/B 特征(0x08010000~0x08011FFF)均变为全 0xFF,与整扇区擦除现象一致;当前实验确认该下载流程不能保护 Meta 所在扇区,具体擦除命令以工具日志/下载算法为准;
 - 证据:特征 0x5A 写入 Meta A/B → 分别用两工具烧 App → 读回 8KB 全 0xFF(实验产物在 `D:\backup\meta_test\`);
 - **结论(进入设计约束):** 内部 Meta 槽与 App 同扇区 → 工具烧 App 必丢元数据 → **内部 Meta 方案废弃,元数据外部化至 GD25Q40E 固定元数据槽**(见 M5 外部分区协调点与 M6),内部 0x08010000~0x08011FFF 退役为保留区。
 
@@ -378,7 +378,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 1. 五阶段在线升级:0x0500 ENTER_BOOT(仅 APP)/ 0x0501 BEGIN / 0x0502 DATA(先写后 ACK)/ 0x0503 END / 0x0504 INSTALL,命令职责表与状态机命令限制照《01》十二-4;
 2. TF 离线升级:统一暂存流程(staging_prepare → 剥头复制 → 校验 → 生成 manifest → STAGED_VALID → 共用 INSTALL)+ 失败包 `.failed` 隔离 + 成功包 `.applied` 幂等改名(《01》十二-6/9);
-3. 双槽元数据(存 GD25Q40E 固定元数据槽 A/B:68B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽时按 App/Backup manifest 恢复;《01》十二-10),槽地址随 M5 外部分区冻结;
+3. 双槽元数据(存 GD25Q40E 固定元数据槽 A/B:68B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽或外部 SPI 不可用时按 App/Backup manifest 恢复;《01》十二-10),槽地址随 M5 外部分区冻结;
 4. 启动确认:TRIAL_PENDING → APP 满足五条件写 CONFIRMED;IWDG/HardFault 失败计数 ≥3 回滚;crash_marker 统一消费(《01》十二-5/9);
 5. OLED 升级进度(0~90% 接收 / 90~100% 校验搬运)+ LED 状态/进度指示(裸机 1ms 时基,无软件 PWM;《01》十一-4/5/6);
 6. 跳转 App 10 步序列与 FWDGT 接管(《01》十二-8、十六-4)。
@@ -389,7 +389,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **风险点(投入最大处):**
 - 安装子阶段掉电恢复矩阵(BACKUP_START→STAGED_VALID、BACKUP_VALID/APP_ERASING/APP_PROGRAMMING→回滚、APP_VALID→TRIAL_PENDING,《01》十二-4);
-- 参数区必须 `fmc_page_erase()` 4KB 页擦除,严禁换算地址用扇区擦除(《01》十二-11);
+- 外部 GD25Q40E 元数据槽必须使用其 4KB sector 擦除/编程/读回流程;内部 Flash 若保留其他 4KB 数据页,才适用 `fmc_page_erase()`(《01》十二-11);
 - 大块擦写循环中喂狗;Bootloader 长等待不能复位(《01》十六-4)。
 
 ---
