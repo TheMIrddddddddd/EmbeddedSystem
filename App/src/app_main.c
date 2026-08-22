@@ -9,12 +9,14 @@ int main(void)
     /* 把向量表指到 App 区 */
     SCB->VTOR = APP_BASE;
 
-    __enable_irq();
+    __DSB();
+    __ISB();
 
     /* SysTick 1ms 节拍 */
     systick_config();
-
     board_led_init();
+    
+    __enable_irq();
 
     while (1)
     {

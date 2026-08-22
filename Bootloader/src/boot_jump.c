@@ -9,8 +9,8 @@ void boot_jump_to_app(void)
     uint32_t msp = *(volatile uint32_t*)APP_BASE;
     uint32_t reset_addr = *(volatile uint32_t*)(APP_BASE + 4U);
 
-    /* ⑥ 校验 App 映像合法性 和 8 字节对齐检查 */
-    if ((msp < SRAM_BASE) || (msp > SRAM_TOP) || ((msp & 0x7U) != 0U))
+    /* ⑥ 8 字节对齐下首次压栈不越界的最小栈顶, 8 字节对齐检查 */
+    if ((msp < SRAM_BASE + 8U) || (msp > SRAM_TOP) || ((msp & 0x7U) != 0U))
     {
         return;
     }
@@ -51,5 +51,10 @@ void boot_jump_to_app(void)
     __set_MSP(msp);
     ((app_func_t)reset_addr)();
 
-    /* App 启动代码自行 __enable_irq()——跳转不会自动清除 PRIMASK */
+    /* App 的 Reset_Handler 不应返回；若异常返回,驻留于此,
+     * 防止在已切换的 App 栈上执行函数返回序列 */
+    while (1)
+    {
+    }
+    
 }

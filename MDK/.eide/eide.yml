@@ -10,7 +10,7 @@ virtualFolder:
   folders:
     - name: Startup
       files:
-        - path: ../Driver/CMSIS/GD/GD32F4xx/Source/GCC/startup_gd32f450_470.S
+        - path: ../Driver/CMSIS/GD/GD32F4xx/Source/ARM/startup_gd32f450_470.s
       folders: []
     - name: CMSIS
       files:
@@ -275,10 +275,10 @@ targets:
         - RTE/_IndustrialEmbedded_App
       libList: []
     excludeList:
-      - <virtual_root>/Startup/startup_gd32f450_470.s
+      - <virtual_root>/Startup/startup_gd32f450_470.S
     settings:
       debugger: cortex-debug
-    toolchain: GCC
+    toolchain: AC5
     toolchainConfigMap:
       AC5:
         archExtensions: ""
