@@ -7,7 +7,7 @@
 
   <Targets>
     <Target>
-      <TargetName>IndustrialEmbedded</TargetName>
+      <TargetName>IndustrialEmbedded-Legacy</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pCCUsed>5060960::V5.06 update 7 (build 960)::.\ARMCC</pCCUsed>
@@ -49,7 +49,7 @@
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
           <OutputDirectory>.\Objects\</OutputDirectory>
-          <OutputName>IndustrialEmbedded</OutputName>
+          <OutputName>IndustrialEmbedded-Legacy</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>0</CreateHexFile>

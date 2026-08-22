@@ -266,11 +266,10 @@ targets:
         - ../Driver/CMSIS
         - ../Libraries/Include
         - ../User/inc
-        - ../APP
+        - ../App
         - ../BSP
         - ../Middleware
         - ../Common
-        - ../Bootloader/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
       libList: []

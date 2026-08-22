@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\APP;..\BSP;..\Middleware;..\Common;..\Bootloader\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\App;..\BSP;..\Middleware;..\Common</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>

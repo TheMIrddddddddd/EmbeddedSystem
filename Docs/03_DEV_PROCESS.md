@@ -269,6 +269,17 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **验收关卡(照搬《01》M1):** 上电 Boot 5s 后跳 App,OLED/LED 显示切换;两个工程均可编译烧录。
 
+**工程身份(强制,构建/烧录前必须核对):**
+
+| Keil 工程文件 | 身份 | 链接区 | 用途 |
+|---|---|---|---|
+| `MDK/IndustrialEmbedded.uvprojx` | ⚠️ **LEGACY 旧基线**(TargetName/OutputName 已加 `-Legacy` 后缀) | 0x08000000 / 512K 旧单工程 | 仅存档参考;**M1 验收前禁止用于烧录** |
+| `MDK/IndustrialEmbedded-Boot.uvprojx` | **M1 Boot** | 0x08000000 / 64K | Boot 构建/烧录 |
+| `MDK/IndustrialEmbedded-App.uvprojx` | **M1 App** | 0x08012000 / 128K | App 构建/烧录 |
+
+- 所有构建/烧录命令**必须显式**指定 `IndustrialEmbedded-Boot.uvprojx` 或 `IndustrialEmbedded-App.uvprojx`;
+- 打开 `IndustrialEmbedded.uvprojx`(旧工程)进行编译属于**错误操作**——产物名/地址均为旧基线,烧录会覆盖 Boot 区;旧工程退役删除前统一保留存档。
+
 **M1 板级验证记录(实测):**
 
 - 链路实测通过:上电 Boot 0.5Hz×5s → 跳 App 2Hz,确认 VTOR 重定位、中断向量化、跳转前 `__enable_irq()`(缺失则 SysTick 中断被 PRIMASK 屏蔽,`delay_1ms` 卡死)三个知识点全部成立;
