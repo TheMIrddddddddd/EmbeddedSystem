@@ -253,7 +253,7 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← 后续 DMA/定时器通道静态�
    Libraries/(SPL,不动)  Driver/(CMSIS,不动)  User/(逐步废弃)
    ```
 2. **先建 Common 最小子集**:`common_flash_layout.h`(内部 Flash Boot/App/Backup/Staging 地址宏 + manifest 宏);外部 GD25Q40E 元数据槽地址属于 M5 分区契约,冻结后再加入对应 Common 存储定义;
-3. **拆出 Boot 工程**(Keil 主力):0x08000000 裸机,最小 LED + 5s 等待 + 跳转 App(跳转前按《01》十二-8 的 10 步序列:关中断/关 SysTick/反初始化/NVIC 清中断/校验 MSP 与复位向量/VTOR/MSP/跳转);
+3. **拆出 Boot 工程**(Keil 主力):0x08000000 裸机,最小 LED + 5s 等待 + 跳转 App(跳转前按《01》十二-8 的 10 步序列:先校验 MSP 与复位向量,通过后再关中断/关 SysTick/反初始化/NVIC 清中断,最后 VTOR/MSP/跳转);
 4. **改造 App 工程**(Keil + EIDE):链接到 0x08012000,`SCB->VTOR = APP_BASE`,闪灯频率与 Boot 区分(如 2Hz vs 0.5Hz,肉眼可辨谁在跑);
 5. **双工具链对齐**:AC5 scatter 与 GCC `gd32f470xE_flash.ld` 都按统一分区产出,两边都能编译烧录;
 6. **旧单工程废弃**:闪灯代码拆入 `bsp_gpio.c` + `board_config.h`,`main.c` 变成空壳。

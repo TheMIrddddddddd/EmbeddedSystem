@@ -1454,19 +1454,26 @@ Bootloader 安装完成 → FW_STATE_TRIAL_PENDING → 启动新 APP
 跳转前必须按顺序执行:
 
 ```
-① 关闭全局中断 (__disable_irq)
-② 停止并关闭 SysTick
-③ 反初始化 Bootloader 使用的外设(USART/OLED/SPI 等)
-④ 禁止并清除全部 NVIC 已使能中断 (NVIC_ICER/NVIC_ICPR)
-⑤ 清除外设挂起标志
-⑥ 校验 App 映像合法性:
-     - MSP 位于有效 SRAM 范围 (0x20000000~0x20030000)
-     - 复位向量满足:reset_addr >= APP_BASE && reset_addr < APP_BASE + active_image_size && reset_addr < APP_MANIFEST_ADDR && (reset_addr & 1U)(不落入 manifest 保留区)
-⑦ 设置 SCB->VTOR = 0x08012000 (APP_BASE)
-⑧ 设置 MSP = *(uint32_t*)0x08012000
-⑨ 跳转复位向量 (*(uint32_t*)(0x08012000 + 4))
+⓪ 读取 App 向量表:MSP = *(uint32_t*)APP_BASE,reset_addr = *(uint32_t*)(APP_BASE + 4)
+① 校验 App 映像合法性(即"向量表初检",在进入清理阶段前完成):
+     - MSP 位于有效 SRAM 范围 (0x20000000~0x20030000) 且 8 字节对齐
+       (首次压栈写 sp-4,8 字节对齐约束下最小合法栈顶 = SRAM_BASE + 8)
+     - 复位向量满足:reset_addr >= APP_BASE && reset_addr < APP_MANIFEST_ADDR && (reset_addr & 1U)
+       (Thumb 地址,且不落入 manifest 保留区)
+   —— 先完成 App 向量表初检,确认有效后,再执行不可逆的清理与跳转;
+      App 无效时无需改变 Bootloader 状态(不关中断/不停 SysTick/不失能 GPIO),
+      校验失败后 PRIMASK 也不会被永久置 1。不要为了机械符合顺序把校验移动到 __disable_irq() 之后。
+② 校验通过后:关闭全局中断 (__disable_irq)
+③ 停止并关闭 SysTick (CTRL/LOAD/VAL = 0)
+④ 清除 SysTick 挂起状态 (SCB->ICSR = PENDSTCLR)
+⑤ 反初始化 Bootloader 使用的外设(当前为 GPIO;无外设中断,挂起清除留空)
+⑥ 禁止并清除全部 NVIC 已使能中断 (NVIC_ICER/NVIC_ICPR)
+⑦ 设置 SCB->VTOR = 0x08012000 (APP_BASE),随后 __DSB()/__ISB()
+⑧ 设置 MSP = 校验通过的 MSP 值
+⑨ 跳转复位向量
 ⑩ 中断恢复:由 APP 启动代码主动执行 __enable_irq()
-    (跳转不会自动清除 PRIMASK;APP 的 SystemInit/启动代码必须重新开中断)
+    (跳转不会自动清除 PRIMASK;APP 的启动代码必须重新开中断,
+     且应在自身 VTOR/时基/GPIO 初始化完成后启用——见《01》十二-9 与 App 主函数约定)
 ```
 
 ### 9、Bootloader 启动流程(完整时序)—— 统一状态分派
