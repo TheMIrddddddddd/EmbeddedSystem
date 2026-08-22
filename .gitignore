@@ -1,5 +1,6 @@
 # Keil 编译产物
 MDK/Objects/
+MDK/ObjectsBoot/
 MDK/Listings/
 MDK/*.uvguix*
 MDK/*_codex.log
@@ -8,6 +9,7 @@ MDK/*.uvoptx
 
 # EIDE 编译产物
 MDK/build/
+MDK/BootEIDE/build/
 MDK/.eide/
 !MDK/.eide/
 !MDK/.eide/**
@@ -17,6 +19,8 @@ MDK/.vscode/
 # 调试器备份文件
 MDK/interface/
 MDK/target/
+MDK/BootEIDE/interface/
+MDK/BootEIDE/target/
 
 # IDE 配置
 .vscode/*
