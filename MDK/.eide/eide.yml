@@ -10,7 +10,7 @@ virtualFolder:
   folders:
     - name: Startup
       files:
-        - path: ../Driver/CMSIS/GD/GD32F4xx/Source/ARM/startup_gd32f450_470.s
+        - path: ../Driver/CMSIS/GD/GD32F4xx/Source/GCC/startup_gd32f450_470.S
       folders: []
     - name: CMSIS
       files:
@@ -274,10 +274,11 @@ targets:
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
       libList: []
-    excludeList: []
+    excludeList:
+      - <virtual_root>/Startup/startup_gd32f450_470.s
     settings:
       debugger: cortex-debug
-    toolchain: AC5
+    toolchain: GCC
     toolchainConfigMap:
       AC5:
         archExtensions: ""
@@ -396,8 +397,35 @@ targets:
         archExtensions: ""
         cpuType: Cortex-M4
         floatingPointHardware: single
-        options: ""
-        scatterFilePath: ../Driver/CMSIS/GD/GD32F4xx/Source/GCC/Ld/gd32f470xE_flash.ld
+        options:
+          version: 5
+          afterBuildTasks: []
+          asm-compiler:
+            ASM_FLAGS: ""
+          beforeBuildTasks: []
+          c/cpp-compiler:
+            CXX_FLAGS: ""
+            C_FLAGS: ""
+            language-c: c11
+            language-cpp: c++11
+            one-elf-section-per-data: true
+            one-elf-section-per-function: true
+            optimization: level-debug
+            warnings: all-warnings
+          global:
+            $float-abi-type: hard
+            misc-control: ""
+            not-use-syscalls: true
+            output-debug-info: enable
+            use-newlib-nano: true
+          linker:
+            $outputTaskExcludes:
+              - .bin
+            LD_FLAGS: ""
+            LIB_FLAGS: -lm
+            output-format: elf
+            remove-unused-input-sections: true
+        scatterFilePath: ../Driver/CMSIS/GD/GD32F4xx/Source/GCC/Ld/gd32f470xE_app_flash.ld
         storageLayout:
           RAM: []
           ROM: []
