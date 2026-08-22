@@ -62,10 +62,7 @@ virtualFolder:
     - name: Common
       files:
         - path: ../../Common/common_flash_layout.h
-      folders: []
-    - name: User
-      files:
-        - path: ../../User/src/systick.c
+        - path: ../../Common/systick.c
       folders: []
 dependenceList: []
 outDir: build
@@ -83,7 +80,6 @@ targets:
         - ../../Driver/CMSIS/GD/GD32F4xx/Include
         - ../../Driver/CMSIS
         - ../../Libraries/Include
-        - ../../User/inc
         - ../../BSP
         - ../../Common
         - ../../Bootloader/inc

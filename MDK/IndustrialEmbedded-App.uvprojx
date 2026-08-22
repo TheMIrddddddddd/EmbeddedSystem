@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\App;..\BSP;..\Middleware;..\Common</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -552,16 +552,6 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>User</GroupName>
-          <Files>
-            <File>
-              <FileName>systick.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\src\systick.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
           <GroupName>BSP</GroupName>
           <Files>
             <File>
@@ -598,6 +588,11 @@
               <FileName>common_flash_layout.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Common\common_flash_layout.h</FilePath>
+            </File>
+            <File>
+              <FileName>systick.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\systick.c</FilePath>
             </File>
           </Files>
         </Group>
