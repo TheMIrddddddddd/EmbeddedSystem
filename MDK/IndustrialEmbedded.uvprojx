@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\APP;..\BSP;..\Middleware</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\APP;..\BSP;..\Middleware;..\Common;..\Bootloader\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -598,6 +598,26 @@
               <FileName>ringbuffer.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Middleware\ringbuffer.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Common</GroupName>
+          <Files>
+            <File>
+              <FileName>common_flash_layout.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Common\common_flash_layout.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Bootloader/src</GroupName>
+          <Files>
+            <File>
+              <FileName>boot_jump.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_jump.c</FilePath>
             </File>
           </Files>
         </Group>

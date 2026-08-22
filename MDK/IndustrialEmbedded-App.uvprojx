@@ -7,7 +7,7 @@
 
   <Targets>
     <Target>
-      <TargetName>IndustrialEmbedded_Boot</TargetName>
+      <TargetName>IndustrialEmbedded_App</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pCCUsed>5060960::V5.06 update 7 (build 960)::.\ARMCC</pCCUsed>
@@ -48,14 +48,14 @@
             <NotGenerated>0</NotGenerated>
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
-          <OutputDirectory>.\ObjectsBoot\</OutputDirectory>
-          <OutputName>IndustrialEmbedded-Boot</OutputName>
+          <OutputDirectory>.\ObjectsApp\</OutputDirectory>
+          <OutputName>IndustrialEmbedded-App</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>0</CreateHexFile>
           <DebugInformation>1</DebugInformation>
           <BrowseInformation>1</BrowseInformation>
-          <ListingPath>.\ListingsBoot\</ListingPath>
+          <ListingPath>.\ListingsApp\</ListingPath>
           <HexFormatSelection>1</HexFormatSelection>
           <Merge32K>0</Merge32K>
           <CreateBatchFile>0</CreateBatchFile>
@@ -276,8 +276,8 @@
               </OCR_RVCT3>
               <OCR_RVCT4>
                 <Type>1</Type>
-                <StartAddress>0x8000000</StartAddress>
-                <Size>0x10000</Size>
+                <StartAddress>0x8012000</StartAddress>
+                <Size>0x20000</Size>
               </OCR_RVCT4>
               <OCR_RVCT5>
                 <Type>1</Type>
@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\App;..\BSP;..\Middleware;..\Common;..\Bootloader\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\APP;..\BSP;..\Middleware;..\Common;..\Bootloader\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -574,6 +574,21 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\board_gpio.c</FilePath>
             </File>
+            <File>
+              <FileName>board_usart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_usart.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware</GroupName>
+          <Files>
+            <File>
+              <FileName>ringbuffer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\ringbuffer.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -587,22 +602,17 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>Bootloader/src</GroupName>
+          <GroupName>App/src</GroupName>
           <Files>
             <File>
-              <FileName>boot_jump.c</FileName>
+              <FileName>app_main.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Bootloader\src\boot_jump.c</FilePath>
-            </File>
-            <File>
-              <FileName>boot_main.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Bootloader\src\boot_main.c</FilePath>
+              <FilePath>..\App\src\app_main.c</FilePath>
             </File>
             <File>
               <FileName>gd32f4xx_it.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Bootloader\src\gd32f4xx_it.c</FilePath>
+              <FilePath>..\App\src\gd32f4xx_it.c</FilePath>
             </File>
           </Files>
         </Group>

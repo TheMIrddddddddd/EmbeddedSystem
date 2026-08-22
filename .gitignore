@@ -1,7 +1,10 @@
 # Keil 编译产物
 MDK/Objects/
 MDK/ObjectsBoot/
+MDK/ObjectsApp/
 MDK/Listings/
+MDK/ListingsBoot/
+MDK/ListingsApp/
 MDK/*.uvguix*
 MDK/*_codex.log
 MDK/*.log
