@@ -232,11 +232,11 @@ protocol_mode=0 alarm_mode=2(01 主动上报 / 02 被动存储,默认 02)
 
 | 存储域 | 存放内容 | 访问方 |
 |---|---|---|
-| **外部 SPI Flash(GD25Q40E,4Mbit/512KB)** | 业务配置(变比/阈值/采样周期/设备ID/波特率/协议模式)、告警记录(最近 10 条)、上电次数计数;后续可选保存升级包/备份镜像 | APP 的 StorageTask 负责参数/告警;Bootloader 仅在升级状态机阶段按需独占访问升级包/备份镜像 |
-| **内部 Flash 参数区(0x08010000~0x08011FFF,2 × 4KB 独立页:slot A / slot B)** | 升级状态(升级标志)、固件元数据(双槽记录)、试运行状态(TRIAL/CONFIRMED)、回滚计数 | Bootloader 与 APP 共享 |
+| **外部 SPI Flash(GD25Q40E,4Mbit/512KB)** | 业务配置(变比/阈值/采样周期/设备ID/波特率/协议模式)、告警记录(最近 10 条)、上电次数计数、**升级状态元数据(固定双槽,M6)**、后续可选保存升级包/备份镜像 | APP 的 StorageTask 负责参数/告警;Bootloader 仅在升级状态机阶段按需独占访问元数据槽/升级包/备份镜像 |
+| **内部 Flash 保留区(0x08010000~0x08011FFF,2 × 4KB 独立页:slot A / slot B)** | **已废弃(仅保留 M1 布局占位)**:实测两个烧录工具(OpenOCD stm32f2x 与 Keil GD32F4xx_512KB.FLM)烧 App 时均按整扇区擦除,该区与 App 同处扇区 4,元数据必被连擦 → 升级状态转存 GD25Q40E 固定元数据槽,此区退役 | (无访问方) |
 
 **规则:**
-- 业务参数走外部 Flash(独立存储、擦写不占用内部空间);Bootloader 和 App 的可执行映像仍在 MCU 内部 Flash;升级状态必须走内部参数区(Bootloader 在 APP 未运行时也能读写)
+- 业务参数走外部 Flash(独立存储、擦写不占用内部空间);Bootloader 和 App 的可执行映像仍在 MCU 内部 Flash;升级状态(元数据/试运行状态/回滚计数)存 GD25Q40E 固定元数据双槽,Bootloader 在升级状态机阶段经 SPI1 独占访问(SPI 原始驱动由 M3 提供)
 - APP 运行配置与升级状态互不干扰;升级固件不会触碰业务参数区
 - ControlTask/AlarmTask 只能向 StorageTask 发送持久化请求,不得直接擦除 GD25Q40E、执行 Flash KV GC 或持有 SPI 锁;Bootloader 访问外部 Flash 只允许发生在升级状态机的明确阶段
 
@@ -1055,15 +1055,17 @@ NORMAL
 
 ## 十二、固件升级(Bootloader)
 
-### 1、内部 Flash 分区(当前候选方案)
+### 1、内部 Flash 分区与外部升级元数据
 
 > Bootloader 和 App 都在 GD32F470 内部 Flash 中运行。下面的地址用于 M1 双工程的初始布局，必须等链接脚本、镜像大小和跳转实测后再定稿；GD25Q40E 不作为复位后的直接执行区。
+>
+> **⚠️ M1 实测(双工具确认):** OpenOCD(stm32f2x 驱动)与 Keil(GD32F4xx_512KB.FLM)烧录 App 后,`0x08010000~0x08011FFF` 的 0x5A 特征均变为全 0xFF,与擦除包含 Meta 的整扇区现象一致;当前实验确认该下载流程不能保护扇区 4 内的旧 slot A/B,但具体擦除命令以工具日志/下载算法为准。因此旧参数区 slot A/B 已废弃,升级状态元数据外部化至 GD25Q40E 固定元数据槽(M6),此两槽仅保留为布局占位。
 
 | 区域 | 起始地址 | 结束地址 | 大小 |
 |---|---|---|---|
 | Bootloader 区 | 0x08000000 | 0x0800FFFF | 64KB |
-| 参数区 slot A | 0x08010000 | 0x08010FFF | 4KB(独立擦除页) |
-| 参数区 slot B | 0x08011000 | 0x08011FFF | 4KB(独立擦除页) |
+| 保留区 slot A(旧参数区,**已废弃**) | 0x08010000 | 0x08010FFF | 4KB(独立擦除页) |
+| 保留区 slot B(旧参数区,**已废弃**) | 0x08011000 | 0x08011FFF | 4KB(独立擦除页) |
 | App 区 | 0x08012000 | 0x08031FFF | 128KB |
 | App 备份区 | 0x08032000 | 0x08051FFF | 128KB |
 | 固件暂存区 | 0x08052000 | 0x08071FFF | 128KB |
@@ -1072,8 +1074,8 @@ NORMAL
 
 ```c
 #define FLASH_BOOT_BASE     0x08000000UL   /* Bootloader 区 */
-#define FLASH_META_SLOT_A   0x08010000UL   /* 参数区 slot A(独立 4KB 页) */
-#define FLASH_META_SLOT_B   0x08011000UL   /* 参数区 slot B(独立 4KB 页) */
+#define FLASH_LEGACY_META_RESERVED_A 0x08010000UL /* 旧内部 Meta 保留区,不再存储运行时元数据 */
+#define FLASH_LEGACY_META_RESERVED_B 0x08011000UL /* 旧内部 Meta 保留区,不再存储运行时元数据 */
 #define APP_BASE            0x08012000UL   /* App 区 */
 #define APP_END             0x08031FFFUL
 #define BACKUP_BASE         0x08032000UL   /* App 备份区 */
@@ -1088,11 +1090,12 @@ NORMAL
 #define STAGING_MANIFEST_ADDR    (STAGING_END + 1UL - MANIFEST_RESERVED_SIZE) /* 0x08071FC0 */
 ```
 
-**当前设计约束(待 M1 构建与跳转验证):**
-- 参数区扩展为 **2 × 4KB 独立擦除页**(slot A / slot B),App 起始后移至 0x08012000;512KB Flash 尾部 0x08072000~0x0807FFFF 保留,不得被当前 Boot/App 链接脚本占用
-- 所有新边界仍为 4KB 对齐,`fmc_page_erase()` 页擦除安全
-- 每个槽独立页擦除:**擦除一个槽不会影响另一个槽**(双槽掉电原子性成立的前提)
-- App 区/备份区/暂存区大小不变,起始地址整体后移 4KB
+**当前设计约束(待 M1/M5/M6 验证):**
+- 内部 `0x08010000~0x08011FFF` 仅作为旧布局保留区,不再存储升级状态或固件元数据;M1 实测表明 OpenOCD 与 Keil 烧录 App 均会擦除其所在扇区
+- 升级元数据外部化至 GD25Q40E,采用两个独立 4KB SPI NOR sector 轮换;建议使用 GD25Q40E sector 2/3,最终地址由 M5 外部分区表冻结
+- 外部 Meta 槽必须使用固定长度序列化、CRC、generation 与最后写入的 commit marker;单槽擦除/写入失败不得破坏另一槽有效记录
+- App 区/备份区/暂存区大小不变;512KB 内部 Flash 尾部 `0x08072000~0x0807FFFF` 保留,不得被当前 Boot/App 链接脚本占用
+- **对齐规则(精确):** 所有可擦除分区(扇区/4KB 页)的**起始地址与大小**按 4KB 对齐;manifest 存放地址为分区末尾 64B 保留区**起点**(如 `0x08031FC0`),**不要求 4KB 对齐,也不得作为擦除/编程地址**——manifest 只能随所在页/扇区整体擦除后重写,编程遵循 Flash 字/半字粒度规则
 - **Bootloader 初始容量门槛:** 若暂采用 64KB 候选区,发布构建的 `Code + RO-data + RW-data load image` 目标为 ≤ 60KB,至少保留 4KB 余量;最终容量等 M1 实际构建后再决定,不得通过关闭校验/回滚功能硬塞
 
 ### 2、固件格式(自定义固件包)
@@ -1137,9 +1140,9 @@ _Static_assert(sizeof(image_manifest_t) == 20, "image_manifest_t must be 20 byte
   - 备份:安装时根据 active 元数据(或读取 App 末尾 manifest)**复制/重新生成** BACKUP manifest
   - 安装:新 App 写入且整体 CRC 通过后,**最后写** APP manifest(写映像 → 校验 → 写 manifest 的次序保证掉电时 manifest 不会指向不完整映像)
   - **初始出厂(强制,固定烧录四件套)**:
-    Bootloader + 原始 App + APP_MANIFEST_ADDR 处的 manifest + 初始元数据槽
-    初始元数据槽固定为:`state=IDLE,generation=1,upgrade_source=NONE,active_size/version/crc=APP manifest,pending/backup/failed 字段清零`
-    ("首次升级时由 Bootloader 补齐"不成立:首次启动时双元数据槽为空,Bootloader 依赖 APP manifest 判断 App 有效性,若没有 manifest 会误入安全升级模式导致 App 无法启动)
+    Bootloader + 原始 App + APP_MANIFEST_ADDR 处的 manifest + GD25Q40E 外部元数据初始槽记录
+    外部元数据初始记录固定为:`state=IDLE,generation=1,upgrade_source=NONE,active_size/version/crc=APP manifest,pending/backup/failed 字段清零`,写入外部 slot A 后读回校验
+    (首次启动即使外部双槽为空或不可用,Bootloader 也必须先依靠 APP manifest 判断 App 是否有效;外部 Meta 重建失败但 App manifest 有效时允许降级启动并记录原因)
 - Python 打包工具输出两类产物:`app.bin`(固件头+原始 APP 映像,用于在线/TF 升级)与 `app_manifest.bin`/工厂合并映像(仅用于首次出厂烧录);在线/离线升级过程中的 Staging/App/Backup manifest 均由 Bootloader 根据已验证 header 生成
 
 **序列化规则(强制,Python 打包工具与 MCU 必须一致):**
@@ -1190,7 +1193,7 @@ typedef enum {
 } firmware_state_t;
 ```
 
-**存储:** 升级状态 + 固件元数据存于内部 Flash 参数区(0x08010000~0x08011FFF,双槽区域),Bootloader 与 APP 共享;掉电后按状态机恢复。
+**存储:** 升级状态与固件元数据存于 GD25Q40E 外部 SPI Flash 的固定双槽(建议 GD25Q40E sector 2/3,每槽 4KB),Bootloader 与 APP 共享同一序列化契约;掉电后扫描 CRC 正确且 commit marker 有效的槽并按 generation 选择记录。内部 `0x08010000~0x08011FFF` 为退役保留区,不再作为运行时元数据后端。
 
 ### 4、在线升级流程(五阶段)
 
@@ -1222,7 +1225,7 @@ typedef enum {
 主机 → 0x0500(APP 运行中)
 APP 顺序执行(先持久化后应答):
   ① 读取升级元数据;若 upgrade_source == TF_OFFLINE(文件清理待完成),应答 NACK 0x66,不写请求标志、不复位
-  ② 持久化升级请求标志(内部 Flash 参数区,校验写入成功)
+  ② 持久化升级请求标志(GD25Q40E 外部元数据双槽,校验写入成功)
   ③ 应答 READY
   ④ 等待 USART 发送完成
   ⑤ 软件复位
@@ -1276,7 +1279,7 @@ Bootloader 顺序执行(先持久化后应答):
 - **断点续传边界(明确):**
   - 串口断线但 MCU 未复位 → 可从 RAM 中最后 ACK 的序号继续
   - MCU 掉电 → 当前设计丢弃 RECEIVING,暂存区作废,不能续传
-  - **不要每 256 字节都擦写内部参数区保存序号**(会快速磨损 Flash),序号保存在 RAM,掉电即失
+  - **不要每 256 字节都擦写外部元数据槽保存序号**(会快速磨损 SPI NOR),序号保存在 RAM,掉电即失
 
 **第四阶段:结束传输(END,0x0503)**
 
@@ -1452,29 +1455,38 @@ Bootloader 安装完成 → FW_STATE_TRIAL_PENDING → 启动新 APP
 跳转前必须按顺序执行:
 
 ```
-① 关闭全局中断 (__disable_irq)
-② 停止并关闭 SysTick
-③ 反初始化 Bootloader 使用的外设(USART/OLED/SPI 等)
-④ 禁止并清除全部 NVIC 已使能中断 (NVIC_ICER/NVIC_ICPR)
-⑤ 清除外设挂起标志
-⑥ 校验 App 映像合法性:
-     - MSP 位于有效 SRAM 范围 (0x20000000~0x20030000)
-     - 复位向量满足:reset_addr >= APP_BASE && reset_addr < APP_BASE + active_image_size && reset_addr < APP_MANIFEST_ADDR && (reset_addr & 1U)(不落入 manifest 保留区)
-⑦ 设置 SCB->VTOR = 0x08012000 (APP_BASE)
-⑧ 设置 MSP = *(uint32_t*)0x08012000
-⑨ 跳转复位向量 (*(uint32_t*)(0x08012000 + 4))
+⓪ 读取 App 向量表:MSP = *(uint32_t*)APP_BASE,reset_addr = *(uint32_t*)(APP_BASE + 4)
+① 校验 App 映像合法性(即"向量表初检",在进入清理阶段前完成):
+     - MSP 位于有效 SRAM 范围 (0x20000000~0x20030000) 且 8 字节对齐
+       (首次压栈写 sp-4,8 字节对齐约束下最小合法栈顶 = SRAM_BASE + 8)
+     - 复位向量满足:reset_addr >= APP_BASE && reset_addr < APP_MANIFEST_ADDR && (reset_addr & 1U)
+       (Thumb 地址,且不落入 manifest 保留区)
+   —— 先完成 App 向量表初检,确认有效后,再执行不可逆的清理与跳转;
+      App 无效时无需改变 Bootloader 状态(不关中断/不停 SysTick/不失能 GPIO),
+      校验失败后 PRIMASK 也不会被永久置 1。不要为了机械符合顺序把校验移动到 __disable_irq() 之后。
+② 校验通过后:关闭全局中断 (__disable_irq)
+③ 停止并关闭 SysTick (CTRL/LOAD/VAL = 0)
+④ 清除 SysTick 挂起状态 (SCB->ICSR = PENDSTCLR)
+⑤ 反初始化 Bootloader 使用的外设(当前为 GPIO;无外设中断,挂起清除留空)
+⑥ 禁止并清除全部 NVIC 已使能中断 (NVIC_ICER/NVIC_ICPR)
+⑦ 设置 SCB->VTOR = 0x08012000 (APP_BASE),随后 __DSB()/__ISB()
+⑧ 设置 MSP = 校验通过的 MSP 值
+⑨ 跳转复位向量
 ⑩ 中断恢复:由 APP 启动代码主动执行 __enable_irq()
-    (跳转不会自动清除 PRIMASK;APP 的 SystemInit/启动代码必须重新开中断)
+    (跳转不会自动清除 PRIMASK;APP 的启动代码必须重新开中断,
+     且应在自身 VTOR/时基/GPIO 初始化完成后启用——见《01》十二-9 与 App 主函数约定)
 ```
 
 ### 9、Bootloader 启动流程(完整时序)—— 统一状态分派
 
-> 启动入口位于 MCU 内部 Flash。Bootloader 先完成最小时钟/GPIO 和必要外设初始化,再按升级状态机读取内部元数据以及可选的 GD25Q40E/TF 升级包;外部 SPI Flash 只作为存储介质,不直接提供复位向量。
+> 启动入口位于 MCU 内部 Flash。Bootloader 先完成最小时钟/GPIO 和必要外设初始化,再限时初始化 SPI1 并读取 GD25Q40E 外部元数据以及可选的 GD25Q40E/TF 升级包;外部 SPI Flash 只作为存储介质,不直接提供复位向量。SPI/外部 Meta 不可用时不得无限等待,必须按下方 App/Backup manifest 降级规则决定启动或进入安全升级模式。
 
 ```
 上电 → Bootloader 开始
   ① OLED 显示 "BOOTLOADER"
-  ② 读取并校验升级元数据(双槽记录,选有效副本)
+  ② 限时读取并校验 GD25Q40E 外部升级元数据(双槽记录,选有效副本)
+     ├─ 外部 Flash/Meta 可用 → 按状态机继续
+     └─ 外部 Flash/Meta 不可用 → 读取 App manifest;App 有效则重建外部 Meta(若可写)并继续启动,否则读取 Backup manifest;两者均无效则驻留安全升级模式
   ③ **统一读取 crash_marker(状态分派前,全局消费):**
      if (crash_marker 有效) {
          if (当前状态 == TRIAL_PENDING) { 计一次 HardFault 失败; 持久化 failure_count; }
@@ -1556,9 +1568,9 @@ Bootloader 安装完成 → FW_STATE_TRIAL_PENDING → 启动新 APP
      └─ 无 → 跳转 App(见 十二-8)
 ```
 
-### 10、升级元数据双槽记录(强制,掉电原子性)
+### 10、外部升级元数据双槽记录(强制,掉电原子性)
 
-**内部参数区升级元数据采用双槽记录(slot A / slot B),写入带提交标志:**
+**GD25Q40E 外部升级元数据采用双槽记录(slot A / slot B),每槽占一个独立 4KB sector,写入带提交标志。建议使用 sector 2/3,最终地址由 M5 外部分区表冻结;内部 Flash 的旧 slot A/B 已退役。**
 
 ```c
 typedef struct {
@@ -1588,22 +1600,23 @@ _Static_assert(sizeof(upgrade_meta_t) == 68, "upgrade_meta_t must be 68 bytes");
 
 | 规则 | 说明 |
 |---|---|
-| 双槽轮换 | 每次写入交替使用 slot A / slot B(各自独立 4KB 页);写前先擦除目标槽所在页(另一槽不受影响) |
+| 双槽轮换 | 每次写入交替使用 GD25Q40E slot A / slot B(各自独立 4KB sector);写前先擦除目标 sector(另一槽不受影响) |
 | 原子提交 | 先写全部字段(不含 crc32/commit_marker)→ 写 crc32 → **最后写 commit_marker**(0xA5C3C3A5);crc32 计算范围 = magic 至 failed_package_version,不含自身与 commit_marker |
 | 掉电恢复 | 启动时扫描两槽:选择"CRC 正确 + commit_marker 有效 + generation 最大"的记录 |
-| 无有效槽 | **不得直接启动旧 App**(掉电可能发生在 App 擦除阶段,App 已不完整):<br>① 读取 App manifest,验证 size/CRC + MSP/复位向量;<br>② App 有效 → 重建并原子提交元数据(active=App manifest,state=IDLE,generation=1,source=NONE,写 slot A 并校验)→ 启动;<br>③ App 无效 → 用 Backup manifest 校验并恢复,再重建元数据;<br>④ Backup 也无效 → 驻留安全升级模式,仅等待 0x0501 BEGIN |
+| 外部 Meta 不可用 | **不得因 SPI/Meta 读取失败无限等待或直接把 App 判为无效:**<br>① 限时重试 SPI/读取两个槽;<br>② 读取 App manifest,验证 magic/manifest CRC/size/image CRC/MSP/复位向量;App 有效 → 尝试重建外部 Meta(active=App manifest,state=IDLE,generation=1,source=NONE),即使重建失败也允许启动 App并记录降级原因;<br>③ App 无效 → 用 Backup manifest 校验并恢复,恢复成功后再尝试重建外部 Meta;<br>④ Backup 也无效 → 驻留安全升级模式,仅等待 0x0501 BEGIN |
+| 无有效槽且外部 Flash 可写 | **不得直接启动旧 App**(掉电可能发生在 App 擦除阶段,App 已不完整):<br>① 读取 App manifest,验证 size/CRC + MSP/复位向量;<br>② App 有效 → 重建并原子提交元数据(active=App manifest,state=IDLE,generation=1,source=NONE,写 slot A 并校验)→ 启动;<br>③ App 无效 → 用 Backup manifest 校验并恢复,再重建元数据;<br>④ Backup 也无效 → 驻留安全升级模式,仅等待 0x0501 BEGIN |
 | 状态与映像元数据同槽 | state 与 active/backup/pending 元数据在同一记录内一次写入,保证原子性 |
 | CONFIRMED 后 | active = pending(提交新映像为活动)→ 清除 pending → 状态回 IDLE;ONLINE 同时清 source,TF_OFFLINE 保留 source 直到带版本/CRC 的 `.applied` 目标文件清理成功 |
 | ROLLBACK 后 | TF_OFFLINE 先保存 failed_package_crc/version,回滚完成后保留 source 直到带版本/CRC 的 `.failed` 目标文件清理成功;任何掉电点均可在下次启动幂等续做 |
 | 下次升级 | backup 在 INSTALL 时轮换(当前 active → backup) |
 
-### 11、Flash 擦除粒度(强制)
+### 11、内部 Flash 与外部 SPI NOR 擦除粒度
 
-**GD32F470 内部 Flash 支持 4KB 页擦除,参数区(4KB)可行,但必须:**
+**内部旧 Meta 槽已退役;GD32F470 的 4KB 页擦除能力仍是内部 Flash 的硬件事实,但不再用于 M6 外部元数据。**
 
-- 参数区擦除**必须使用 `fmc_page_erase()`**(4KB 页擦除)
-- **禁止**根据地址换算后调用 `fmc_sector_erase()`(传统 64KB 扇区)——参数区位于扇区内部,误用扇区擦除会连同 App 区前部一起擦掉
-- 所有分区边界(0x08010000/0x08011000/0x08012000 等)均为 4KB 对齐,页擦除安全
+- 内部 Flash 若后续仍有 4KB 页数据，必须使用 `fmc_page_erase()`，禁止将 `0x08010000~0x08011FFF` 当作当前元数据区调用扇区擦除
+- GD25Q40E 元数据槽使用 SPI NOR 的独立 4KB sector 擦除;其擦除/写入/读回必须由 M5 的 SPI 驱动实现并验证
+- App/Backup/Staging 的 manifest 地址位于各分区末尾 64B 保留区起点,不是 4KB 页首;manifest 写入不得误用页擦除地址
 
 ---
 
@@ -1823,7 +1836,7 @@ SampleTask ──最新值快照──► DisplayTask(只读)
 | 资源 | 所有者 | 访问规则 |
 |---|---|---|
 | FatFs / TF 卡 | StorageTask | 唯一所有者,其他任务只发 Persistence 请求 |
-| 外部 Flash(GD25Q40E) | APP:StorageTask;Bootloader:升级状态机 | APP 侧 Persistence Service 独占参数/告警访问;Bootloader 仅在升级阶段独占访问升级包/备份镜像,其他任务不得直接擦除/GC/持 SPI 锁 |
+| 外部 Flash(GD25Q40E) | APP:StorageTask;Bootloader:升级状态机 | APP 侧 Persistence Service 独占参数/告警访问;Bootloader 仅在升级阶段独占访问元数据槽/升级包/备份镜像,其他任务不得直接擦除/GC/持 SPI 锁 |
 | SPI 总线(GD25Q40E) | 当前执行上下文内部驱动 | APP 与 Bootloader 不并行访问;切换执行上下文前完成外设收尾,未来多设备时由 BSP 总线驱动内部串行化 |
 | I2C 总线(OLED) | DisplayTask | 单一所有者;其他任务提交显示状态,不直接访问 I2C |
 | USART1(RS485) | ProtocolTask 发送/ISR 接收 | 发送互斥锁 |
@@ -1865,7 +1878,7 @@ SampleTask ──最新值快照──► DisplayTask(只读)
 
 | 区域 | 预估 | 说明 |
 |---|---|---|
-| **GD32F470 内部 Flash** | **512KB** | 存放 Bootloader、App 和内部元数据/参数区;这是程序与只读数据空间,不是 FreeRTOS heap |
+| **GD32F470 内部 Flash** | **512KB** | 存放 Bootloader、App、manifest 与退役保留区;升级元数据不再存于内部 Flash,这是程序与只读数据空间,不是 FreeRTOS heap |
 | **普通 SRAM** | **192KB** | 任务运行数据、普通全局变量和 DMA 缓冲区;DMA 缓冲区必须放这里,不能放 TCM |
 | **TCMRAM** | **64KB** | 高速 TCM 区;总 RAM = 192KB + 64KB |
 | **FreeRTOS 静态对象总预算** | **约 16KB（初始预算）** | 包含七个业务任务栈约 7.5KB、任务控制块、IdleTask/Timer Service Task、静态队列、事件组、互斥锁、信号量和软件定时器;这是 RAM 规划预算,不是 `heap_4` 动态池 |
@@ -1905,7 +1918,7 @@ SampleTask ──最新值快照──► DisplayTask(只读)
 ```
 IndustrialEmbedded/
 ├── Common/                     ← Boot/App 共同编译,纯 C、无 RTOS/FatFs/UI/GD32 寄存器依赖
-│   ├── common_flash_layout.h   ← Boot/Meta/App/Backup/Staging 地址与容量
+│   ├── common_flash_layout.h   ← Boot/Legacy保留区/App/Backup/Staging 地址与容量
 │   ├── common_fw_format.c/h    ← V1 固件头/Manifest 逐字段编解码
 │   ├── common_upgrade_meta.c/h ← 68B 元数据固定序列化/CRC/commit 规则
 │   ├── common_crc_profile.c/h  ← CRC16/CRC32 参数与测试向量

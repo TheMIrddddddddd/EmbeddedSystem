@@ -7,7 +7,7 @@
 
   <Targets>
     <Target>
-      <TargetName>IndustrialEmbedded-Legacy</TargetName>
+      <TargetName>IndustrialEmbedded_App</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pCCUsed>5060960::V5.06 update 7 (build 960)::.\ARMCC</pCCUsed>
@@ -48,14 +48,14 @@
             <NotGenerated>0</NotGenerated>
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
-          <OutputDirectory>.\Objects\</OutputDirectory>
-          <OutputName>IndustrialEmbedded-Legacy</OutputName>
+          <OutputDirectory>.\ObjectsApp\</OutputDirectory>
+          <OutputName>IndustrialEmbedded-App</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>0</CreateHexFile>
           <DebugInformation>1</DebugInformation>
           <BrowseInformation>1</BrowseInformation>
-          <ListingPath>.\Listings\</ListingPath>
+          <ListingPath>.\ListingsApp\</ListingPath>
           <HexFormatSelection>1</HexFormatSelection>
           <Merge32K>0</Merge32K>
           <CreateBatchFile>0</CreateBatchFile>
@@ -276,8 +276,8 @@
               </OCR_RVCT3>
               <OCR_RVCT4>
                 <Type>1</Type>
-                <StartAddress>0x8000000</StartAddress>
-                <Size>0x80000</Size>
+                <StartAddress>0x8012000</StartAddress>
+                <Size>0x20000</Size>
               </OCR_RVCT4>
               <OCR_RVCT5>
                 <Type>1</Type>
@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\User\inc;..\APP;..\BSP;..\Middleware;..\Common;..\Bootloader\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -552,26 +552,6 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>User</GroupName>
-          <Files>
-            <File>
-              <FileName>gd32f4xx_it.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\src\gd32f4xx_it.c</FilePath>
-            </File>
-            <File>
-              <FileName>main.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\src\main.c</FilePath>
-            </File>
-            <File>
-              <FileName>systick.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\src\systick.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
           <GroupName>BSP</GroupName>
           <Files>
             <File>
@@ -609,35 +589,25 @@
               <FileType>5</FileType>
               <FilePath>..\Common\common_flash_layout.h</FilePath>
             </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>Bootloader/src</GroupName>
-          <Files>
             <File>
-              <FileName>boot_jump.c</FileName>
+              <FileName>systick.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Bootloader\src\boot_jump.c</FilePath>
+              <FilePath>..\Common\systick.c</FilePath>
             </File>
           </Files>
         </Group>
         <Group>
-          <GroupName>App</GroupName>
+          <GroupName>App/src</GroupName>
           <Files>
             <File>
-              <FileName>led_app.c</FileName>
+              <FileName>app_main.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\App\led_app.c</FilePath>
+              <FilePath>..\App\src\app_main.c</FilePath>
             </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>App</GroupName>
-          <Files>
             <File>
-              <FileName>led_app.c</FileName>
+              <FileName>gd32f4xx_it.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\App\led_app.c</FilePath>
+              <FilePath>..\App\src\gd32f4xx_it.c</FilePath>
             </File>
           </Files>
         </Group>

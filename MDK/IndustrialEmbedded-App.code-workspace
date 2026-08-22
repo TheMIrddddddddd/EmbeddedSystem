@@ -4,8 +4,6 @@
             "path": "."
         }
     ],
-    "settings": {
-        "stm32cube-ide-clangd.path": "cube"
-    },
+    "settings": {},
     "extensions": {}
 }
