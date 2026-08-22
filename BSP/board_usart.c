@@ -60,9 +60,7 @@ static void board_usart1_rs485_rx_dma_init(void);
 static void board_usart1_rs485_rx_dma_commit_block(const rt_uint8_t *data, uint16_t length);
 static void board_usart1_rs485_rx_dma_commit(void);
 
-#if defined(__ARMCC_VERSION)
 #pragma import(__use_no_semihosting)
-#endif
 
 struct __FILE
 {
