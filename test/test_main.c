@@ -48,6 +48,13 @@ void test_modbus_rejects_invalid_arguments(void);
 void test_modbus_rejects_small_or_short_frames(void);
 void test_modbus_rejects_crc_error(void);
 void test_modbus_rejects_invalid_address_and_function(void);
+void test_cli_dispatches_single_command(void);
+void test_cli_splits_arguments_and_ignores_extra_spaces(void);
+void test_cli_rejects_empty_and_unknown_commands(void);
+void test_cli_reports_handler_argument_error(void);
+void test_cli_reports_output_buffer_error(void);
+void test_cli_rejects_invalid_input_pointers(void);
+void test_cli_rejects_line_too_long(void);
 
 int main(void)
 {
@@ -92,6 +99,14 @@ int main(void)
     RUN_TEST(test_modbus_rejects_small_or_short_frames);
     RUN_TEST(test_modbus_rejects_crc_error);
     RUN_TEST(test_modbus_rejects_invalid_address_and_function);
+
+    RUN_TEST(test_cli_dispatches_single_command);
+    RUN_TEST(test_cli_splits_arguments_and_ignores_extra_spaces);
+    RUN_TEST(test_cli_rejects_empty_and_unknown_commands);
+    RUN_TEST(test_cli_reports_handler_argument_error);
+    RUN_TEST(test_cli_reports_output_buffer_error);
+    RUN_TEST(test_cli_rejects_invalid_input_pointers);
+    RUN_TEST(test_cli_rejects_line_too_long);
 
     return UNITY_END();
 }

@@ -7,7 +7,7 @@
 # run it, report pass/fail counts. No MCU hardware involved.
 
 CC      := gcc
-CFLAGS  := -std=c99 -Wall -Wextra -I../Common/inc -I../Middleware/Ringbuffer/inc -I../Middleware/Protocol/inc -Iunity -g -O0
+CFLAGS  := -std=c99 -Wall -Wextra -I../Common/inc -I../Middleware/Ringbuffer/inc -I../Middleware/Protocol/inc -I../Middleware/CLI/inc -Iunity -g -O0
 TARGET  := m2_test
 
 SRCS := \
@@ -15,12 +15,14 @@ SRCS := \
     ../Middleware/Ringbuffer/src/ringbuffer.c \
     ../Middleware/Protocol/src/protocol_frame.c \
     ../Middleware/Protocol/src/modbus_rtu.c \
+    ../Middleware/CLI/src/cli.c \
     unity/unity.c \
     test_main.c \
     test_crc.c \
     test_ringbuffer.c \
     test_protocol_frame.c \
-    test_modbus_rtu.c
+    test_modbus_rtu.c \
+    test_cli.c
 
 all: test
 
