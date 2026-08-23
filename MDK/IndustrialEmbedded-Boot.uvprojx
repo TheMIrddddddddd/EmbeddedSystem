@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Bootloader\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware\Protocol\inc;..\Common\inc;..\Bootloader\inc;..\Middleware\Ringbuffer\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -603,6 +603,26 @@
               <FileName>gd32f4xx_it.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Bootloader\src\gd32f4xx_it.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware</GroupName>
+          <Files>
+            <File>
+              <FileName>modbus_rtu.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Protocol\src\modbus_rtu.c</FilePath>
+            </File>
+            <File>
+              <FileName>protocol_frame.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Protocol\src\protocol_frame.c</FilePath>
+            </File>
+            <File>
+              <FileName>ringbuffer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Ringbuffer\src\ringbuffer.c</FilePath>
             </File>
           </Files>
         </Group>

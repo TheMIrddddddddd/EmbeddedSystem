@@ -68,6 +68,12 @@ virtualFolder:
             - path: ../Bootloader/src/boot_main.c
             - path: ../Bootloader/src/gd32f4xx_it.c
           folders: []
+    - name: Middleware
+      files:
+        - path: ../Middleware/Protocol/src/modbus_rtu.c
+        - path: ../Middleware/Protocol/src/protocol_frame.c
+        - path: ../Middleware/Ringbuffer/src/ringbuffer.c
+      folders: []
 dependenceList: []
 outDir: build
 miscInfo:
@@ -428,9 +434,10 @@ targets:
         - ../Libraries/Include
         - ../App
         - ../BSP
-        - ../Middleware
+        - ../Middleware/Protocol/inc
         - ../Common/inc
         - ../Bootloader/inc
+        - ../Middleware/Ringbuffer/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_Boot
       libList: []

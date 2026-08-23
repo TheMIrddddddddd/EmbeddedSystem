@@ -25,6 +25,21 @@ void test_ringbuffer_wraparound(void);
 void test_ringbuffer_put_force_overwrite(void);
 void test_ringbuffer_peek_consuming(void);
 void test_ringbuffer_capacity_2048(void);
+void test_protocol_encode_empty_command(void);
+void test_protocol_encode_response_payload(void);
+void test_protocol_encode_rejects_invalid_arguments(void);
+void test_protocol_encode_rejects_invalid_payload_and_type(void);
+void test_protocol_encode_rejects_small_buffer(void);
+void test_protocol_encode_rejects_reserved_address(void);
+void test_protocol_encode_maximum_payload(void);
+void test_protocol_decode_empty_command(void);
+void test_protocol_decode_response_payload(void);
+void test_protocol_decode_rejects_invalid_arguments(void);
+void test_protocol_decode_rejects_short_frame(void);
+void test_protocol_decode_rejects_fixed_field_errors(void);
+void test_protocol_decode_rejects_length_errors(void);
+void test_protocol_decode_rejects_crc_and_tail_errors(void);
+void test_protocol_decode_consumes_one_frame(void);
 
 int main(void)
 {
@@ -43,6 +58,23 @@ int main(void)
     RUN_TEST(test_ringbuffer_put_force_overwrite);
     RUN_TEST(test_ringbuffer_peek_consuming);
     RUN_TEST(test_ringbuffer_capacity_2048);
+
+    RUN_TEST(test_protocol_encode_empty_command);
+    RUN_TEST(test_protocol_encode_response_payload);
+    RUN_TEST(test_protocol_encode_rejects_invalid_arguments);
+    RUN_TEST(test_protocol_encode_rejects_invalid_payload_and_type);
+    RUN_TEST(test_protocol_encode_rejects_small_buffer);
+    RUN_TEST(test_protocol_encode_rejects_reserved_address);
+    RUN_TEST(test_protocol_encode_maximum_payload);
+
+    RUN_TEST(test_protocol_decode_empty_command);
+    RUN_TEST(test_protocol_decode_response_payload);
+    RUN_TEST(test_protocol_decode_rejects_invalid_arguments);
+    RUN_TEST(test_protocol_decode_rejects_short_frame);
+    RUN_TEST(test_protocol_decode_rejects_fixed_field_errors);
+    RUN_TEST(test_protocol_decode_rejects_length_errors);
+    RUN_TEST(test_protocol_decode_rejects_crc_and_tail_errors);
+    RUN_TEST(test_protocol_decode_consumes_one_frame);
 
     return UNITY_END();
 }
