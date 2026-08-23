@@ -13,7 +13,8 @@ static const uint8_t standard_vector[VECTOR_SIZE] = {
     '1', '2', '3', '4', '5', '6', '7', '8', '9'
 };
 
-/* Classic Modbus RTU read-holding-registers frame: 01 03 00 00 00 0A -> CRC 0xC5CD */
+/* Classic Modbus RTU read-holding-registers frame: 01 03 00 00 00 0A;
+ * CRC register value = 0xCDC5 (high 0xCD, low 0xC5); Modbus wire bytes = C5 CD (low byte first) */
 static const uint8_t modbus_frame[6] = { 0x01, 0x03, 0x00, 0x00, 0x00, 0x0A };
 
 void test_crc16_standard_vector(void)
@@ -31,8 +32,9 @@ void test_crc16_empty(void)
 void test_crc16_modbus_frame_vector(void)
 {
     /* Classic Modbus RTU read-holding-registers frame: 01 03 00 00 00 0A.
-     * Standard register value = 0xCDC5 (transmitted low byte first as CD C5);
-     * project wire order is defined at protocol layer (Docs/01 12-2). */
+     * CRC register value = 0xCDC5 (high byte 0xCD, low byte 0xC5).
+     * Modbus RTU wire order: low byte first  -> 0xC5 0xCD.
+     * Custom protocol wire order: high byte first -> 0xCD 0xC5 (Docs/01 12-2). */
     TEST_ASSERT_EQUAL_HEX16(0xCDC5, common_crc16_calc(modbus_frame, sizeof(modbus_frame)));
 }
 

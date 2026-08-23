@@ -7,12 +7,12 @@
 # run it, report pass/fail counts. No MCU hardware involved.
 
 CC      := gcc
-CFLAGS  := -std=c99 -Wall -Wextra -I../Common -I../Middleware -Iunity -g -O0
+CFLAGS  := -std=c99 -Wall -Wextra -I../Common/inc -I../Middleware/Ringbuffer/inc -Iunity -g -O0
 TARGET  := m2_test
 
 SRCS := \
-    ../Common/common_crc.c \
-    ../Middleware/ringbuffer.c \
+    ../Common/src/common_crc.c \
+    ../Middleware/Ringbuffer/src/ringbuffer.c \
     unity/unity.c \
     test_main.c \
     test_crc.c \

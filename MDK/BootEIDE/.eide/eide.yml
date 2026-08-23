@@ -61,8 +61,9 @@ virtualFolder:
       folders: []
     - name: Common
       files:
-        - path: ../../Common/common_flash_layout.h
-        - path: ../../Common/systick.c
+        - path: ../../Common/inc/common_flash_layout.h
+        - path: ../../Common/src/systick.c
+        - path: ../../Common/src/common_crc.c
       folders: []
 dependenceList: []
 outDir: build
@@ -81,7 +82,7 @@ targets:
         - ../../Driver/CMSIS
         - ../../Libraries/Include
         - ../../BSP
-        - ../../Common
+        - ../../Common/inc
         - ../../Bootloader/inc
       libList: []
     excludeList: []
