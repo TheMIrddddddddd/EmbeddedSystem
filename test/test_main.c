@@ -40,6 +40,14 @@ void test_protocol_decode_rejects_fixed_field_errors(void);
 void test_protocol_decode_rejects_length_errors(void);
 void test_protocol_decode_rejects_crc_and_tail_errors(void);
 void test_protocol_decode_consumes_one_frame(void);
+void test_modbus_encode_read_request(void);
+void test_modbus_encode_empty_data(void);
+void test_modbus_decode_read_response(void);
+void test_modbus_decode_accepts_trailing_bytes(void);
+void test_modbus_rejects_invalid_arguments(void);
+void test_modbus_rejects_small_or_short_frames(void);
+void test_modbus_rejects_crc_error(void);
+void test_modbus_rejects_invalid_address_and_function(void);
 
 int main(void)
 {
@@ -75,6 +83,15 @@ int main(void)
     RUN_TEST(test_protocol_decode_rejects_length_errors);
     RUN_TEST(test_protocol_decode_rejects_crc_and_tail_errors);
     RUN_TEST(test_protocol_decode_consumes_one_frame);
+
+    RUN_TEST(test_modbus_encode_read_request);
+    RUN_TEST(test_modbus_encode_empty_data);
+    RUN_TEST(test_modbus_decode_read_response);
+    RUN_TEST(test_modbus_decode_accepts_trailing_bytes);
+    RUN_TEST(test_modbus_rejects_invalid_arguments);
+    RUN_TEST(test_modbus_rejects_small_or_short_frames);
+    RUN_TEST(test_modbus_rejects_crc_error);
+    RUN_TEST(test_modbus_rejects_invalid_address_and_function);
 
     return UNITY_END();
 }

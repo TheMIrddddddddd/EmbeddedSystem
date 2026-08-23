@@ -14,11 +14,13 @@ SRCS := \
     ../Common/src/common_crc.c \
     ../Middleware/Ringbuffer/src/ringbuffer.c \
     ../Middleware/Protocol/src/protocol_frame.c \
+    ../Middleware/Protocol/src/modbus_rtu.c \
     unity/unity.c \
     test_main.c \
     test_crc.c \
     test_ringbuffer.c \
-    test_protocol_frame.c
+    test_protocol_frame.c \
+    test_modbus_rtu.c
 
 all: test
 
