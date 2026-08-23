@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -574,6 +574,11 @@
         <Group>
           <GroupName>Middleware</GroupName>
           <Files>
+            <File>
+              <FileName>cli.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\CLI\src\cli.c</FilePath>
+            </File>
             <File>
               <FileName>ringbuffer.c</FileName>
               <FileType>1</FileType>

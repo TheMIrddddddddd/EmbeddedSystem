@@ -65,6 +65,10 @@ virtualFolder:
         - path: ../../Common/src/systick.c
         - path: ../../Common/src/common_crc.c
       folders: []
+    - name: Middleware
+      files:
+        - path: ../../Middleware/CLI/src/cli.c
+      folders: []
 dependenceList: []
 outDir: build
 miscInfo:
@@ -83,6 +87,7 @@ targets:
         - ../../Libraries/Include
         - ../../BSP
         - ../../Common/inc
+        - ../../Middleware/CLI/inc
         - ../../Bootloader/inc
       libList: []
     excludeList: []

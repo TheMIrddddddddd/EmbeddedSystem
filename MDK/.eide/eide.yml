@@ -70,6 +70,7 @@ virtualFolder:
           folders: []
     - name: Middleware
       files:
+        - path: ../Middleware/CLI/src/cli.c
         - path: ../Middleware/Protocol/src/modbus_rtu.c
         - path: ../Middleware/Protocol/src/protocol_frame.c
         - path: ../Middleware/Ringbuffer/src/ringbuffer.c
@@ -93,6 +94,7 @@ targets:
         - ../Common/inc
         - ../Middleware/Ringbuffer/inc
         - ../Middleware/Protocol/inc
+        - ../Middleware/CLI/inc
         - ../App
         - ../BSP
         - .cmsis/include
@@ -273,6 +275,7 @@ targets:
         - ../BSP
         - ../Middleware/Ringbuffer/inc
         - ../Middleware/Protocol/inc
+        - ../Middleware/CLI/inc
         - ../Common/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
@@ -435,6 +438,7 @@ targets:
         - ../App
         - ../BSP
         - ../Middleware/Protocol/inc
+        - ../Middleware/CLI/inc
         - ../Common/inc
         - ../Bootloader/inc
         - ../Middleware/Ringbuffer/inc
