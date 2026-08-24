@@ -74,6 +74,7 @@ virtualFolder:
         - path: ../Middleware/Protocol/src/modbus_rtu.c
         - path: ../Middleware/Protocol/src/protocol_frame.c
         - path: ../Middleware/Ringbuffer/src/ringbuffer.c
+        - path: ../Middleware/FlashKV/src/flash_kv.c
       folders: []
 dependenceList: []
 outDir: build
@@ -438,10 +439,11 @@ targets:
         - ../App
         - ../BSP
         - ../Middleware/Protocol/inc
-        - ../Middleware/CLI/inc
         - ../Common/inc
         - ../Bootloader/inc
         - ../Middleware/Ringbuffer/inc
+        - ../Middleware/CLI/inc
+        - ../Middleware/FlashKV/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_Boot
       libList: []

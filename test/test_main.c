@@ -55,6 +55,15 @@ void test_cli_reports_handler_argument_error(void);
 void test_cli_reports_output_buffer_error(void);
 void test_cli_rejects_invalid_input_pointers(void);
 void test_cli_rejects_line_too_long(void);
+void test_flash_kv_initializes_empty_storage(void);
+void test_flash_kv_sets_and_gets_value(void);
+void test_flash_kv_latest_value_replaces_previous_value(void);
+void test_flash_kv_keeps_different_keys_independent(void);
+void test_flash_kv_rejects_invalid_arguments(void);
+void test_flash_kv_rejects_oversized_key_and_value(void);
+void test_flash_kv_reports_small_output_buffer(void);
+void test_flash_kv_reports_no_space(void);
+void test_flash_kv_recovers_records_after_reinitialization(void);
 
 int main(void)
 {
@@ -107,6 +116,16 @@ int main(void)
     RUN_TEST(test_cli_reports_output_buffer_error);
     RUN_TEST(test_cli_rejects_invalid_input_pointers);
     RUN_TEST(test_cli_rejects_line_too_long);
+
+    RUN_TEST(test_flash_kv_initializes_empty_storage);
+    RUN_TEST(test_flash_kv_sets_and_gets_value);
+    RUN_TEST(test_flash_kv_latest_value_replaces_previous_value);
+    RUN_TEST(test_flash_kv_keeps_different_keys_independent);
+    RUN_TEST(test_flash_kv_rejects_invalid_arguments);
+    RUN_TEST(test_flash_kv_rejects_oversized_key_and_value);
+    RUN_TEST(test_flash_kv_reports_small_output_buffer);
+    RUN_TEST(test_flash_kv_reports_no_space);
+    RUN_TEST(test_flash_kv_recovers_records_after_reinitialization);
 
     return UNITY_END();
 }

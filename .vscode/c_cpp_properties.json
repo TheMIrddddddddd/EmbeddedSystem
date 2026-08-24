@@ -10,11 +10,11 @@
                 "${workspaceFolder}/Driver/CMSIS",
                 "${workspaceFolder}/Libraries/Include",
                 "${workspaceFolder}/Libraries/Source",
-                "${workspaceFolder}/User/inc",
-                "${workspaceFolder}/User/src",
                 "${workspaceFolder}/BSP",
                 "${workspaceFolder}/Middleware/CLI/inc",
-                "${workspaceFolder}/Middleware/CLI/src"
+                "${workspaceFolder}/Middleware/CLI/src",
+                "${workspaceFolder}/Middleware/FlashKV/inc",
+                "${workspaceFolder}/Middleware/FlashKV/src"
             ],
             "defines": [
                 "GD32F470",

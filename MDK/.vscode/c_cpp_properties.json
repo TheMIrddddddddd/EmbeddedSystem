@@ -6,7 +6,6 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Include",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Libraries\\Include",
-                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\User\\inc",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\APP",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\BSP",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Common\\inc",
@@ -19,13 +18,13 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Source\\ARM",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Source",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Libraries\\Source",
-                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\User\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\App",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Common\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Bootloader\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Ringbuffer\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Protocol\\src",
-                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\CLI\\src"
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\CLI\\src",
+                "D:/STM322222222222222222222/GD32_SieMens/IndustrialEmbedded/Middleware/FlashKV/inc"
             ],
             "defines": [
                 "USE_STDPERIPH_DRIVER",
@@ -117,6 +116,7 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Bootloader\\inc",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Ringbuffer\\inc",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\CLI\\inc",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FlashKV\\inc",
                 "D:\\keil5\\ARM\\ARMCC\\include",
                 "D:\\keil5\\ARM\\ARMCC\\include\\rw",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Source\\ARM",
@@ -126,7 +126,8 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Bootloader\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\CLI\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Protocol\\src",
-                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Ringbuffer\\src"
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Ringbuffer\\src",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FlashKV\\src"
             ],
             "defines": [
                 "USE_STDPERIPH_DRIVER",
@@ -220,6 +221,7 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Ringbuffer\\inc",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Protocol\\inc",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\CLI\\inc",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FlashKV\\inc",
                 "D:\\keil5\\ARM\\ARMCC\\include",
                 "D:\\keil5\\ARM\\ARMCC\\include\\rw",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Source\\ARM",
@@ -228,6 +230,7 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\CLI\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Ringbuffer\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Protocol\\src",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FlashKV\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Common\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\App\\src"
             ],
@@ -316,19 +319,19 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Include",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Libraries\\Include",
-                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\User\\inc",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\APP",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\BSP",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Common",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Bootloader\\inc",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FlashKV\\inc",
                 "D:\\keil5\\ARM\\ARMCC\\include",
                 "D:\\keil5\\ARM\\ARMCC\\include\\rw",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Source\\ARM",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Source",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Libraries\\Source",
-                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\User\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Bootloader\\src",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FlashKV\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\App"
             ],
             "defines": [
