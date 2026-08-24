@@ -1,0 +1,27 @@
+{
+    "configurations": [
+        {
+            "name": "IndustrialEmbedded",
+            "compilerPath": "C:/ST/STM32CubeCLT_1.20.0/GNU-tools-for-STM32/bin/arm-none-eabi-gcc.exe",
+            "cStandard": "c11",
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/Driver/CMSIS/GD/GD32F4xx/Include",
+                "${workspaceFolder}/Driver/CMSIS",
+                "${workspaceFolder}/Libraries/Include",
+                "${workspaceFolder}/Libraries/Source",
+                "${workspaceFolder}/BSP",
+                "${workspaceFolder}/Middleware/CLI/inc",
+                "${workspaceFolder}/Middleware/CLI/src",
+                "${workspaceFolder}/Middleware/FlashKV/inc",
+                "${workspaceFolder}/Middleware/FlashKV/src"
+            ],
+            "defines": [
+                "GD32F470",
+                "USE_STDPERIPH_DRIVER"
+            ],
+            "intelliSenseMode": "windows-gcc-arm"
+        }
+    ],
+    "version": 4
+}

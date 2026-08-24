@@ -1,4 +1,5 @@
 #include "gd32f4xx.h"
+#include "gd32f4xx_rcu.h"
 #include "common_flash_layout.h"
 #include "boot_jump.h"
 

@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -575,9 +575,29 @@
           <GroupName>Middleware</GroupName>
           <Files>
             <File>
+              <FileName>cli.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\CLI\src\cli.c</FilePath>
+            </File>
+            <File>
               <FileName>ringbuffer.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Middleware\ringbuffer.c</FilePath>
+              <FilePath>..\Middleware\Ringbuffer\src\ringbuffer.c</FilePath>
+            </File>
+            <File>
+              <FileName>protocol_frame.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Protocol\src\protocol_frame.c</FilePath>
+            </File>
+            <File>
+              <FileName>modbus_rtu.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Protocol\src\modbus_rtu.c</FilePath>
+            </File>
+            <File>
+              <FileName>flash_kv.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FlashKV\src\flash_kv.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -585,14 +605,24 @@
           <GroupName>Common</GroupName>
           <Files>
             <File>
-              <FileName>common_flash_layout.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\Common\common_flash_layout.h</FilePath>
+              <FileName>common_crc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\src\common_crc.c</FilePath>
             </File>
             <File>
               <FileName>systick.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Common\systick.c</FilePath>
+              <FilePath>..\Common\src\systick.c</FilePath>
+            </File>
+            <File>
+              <FileName>common_flash_layout.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Common\inc\common_flash_layout.h</FilePath>
+            </File>
+            <File>
+              <FileName>upgrade_serialization.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\src\upgrade_serialization.c</FilePath>
             </File>
           </Files>
         </Group>

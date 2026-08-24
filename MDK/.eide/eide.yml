@@ -56,12 +56,18 @@ virtualFolder:
       folders: []
     - name: Middleware
       files:
-        - path: ../Middleware/ringbuffer.c
+        - path: ../Middleware/CLI/src/cli.c
+        - path: ../Middleware/Ringbuffer/src/ringbuffer.c
+        - path: ../Middleware/Protocol/src/protocol_frame.c
+        - path: ../Middleware/Protocol/src/modbus_rtu.c
+        - path: ../Middleware/FlashKV/src/flash_kv.c
       folders: []
     - name: Common
       files:
-        - path: ../Common/common_flash_layout.h
-        - path: ../Common/systick.c
+        - path: ../Common/src/common_crc.c
+        - path: ../Common/src/systick.c
+        - path: ../Common/inc/common_flash_layout.h
+        - path: ../Common/src/upgrade_serialization.c
       folders: []
     - name: App
       files: []
@@ -87,10 +93,12 @@ targets:
         - ../Driver/CMSIS/GD/GD32F4xx/Include
         - ../Driver/CMSIS
         - ../Libraries/Include
-        - ../Common
+        - ../Common/inc
+        - ../Middleware/Ringbuffer/inc
+        - ../Middleware/Protocol/inc
+        - ../Middleware/CLI/inc
         - ../App
         - ../BSP
-        - ../Middleware
         - .cmsis/include
         - RTE/_IndustrialEmbedded
       libList: []
@@ -268,7 +276,11 @@ targets:
         - ../App
         - ../BSP
         - ../Middleware
-        - ../Common
+        - ../Common/inc
+        - ../Middleware/Ringbuffer/inc
+        - ../Middleware/Protocol/inc
+        - ../Middleware/CLI/inc
+        - ../Middleware/FlashKV/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
       libList: []
@@ -381,6 +393,172 @@ targets:
               mem:
                 size: "0x20000"
                 startAddr: "0x8012000"
+              tag: IROM
+            - id: 2
+              isChecked: false
+              isStartup: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              tag: IROM
+        useCustomScatterFile: false
+      GCC:
+        archExtensions: ""
+        cpuType: Cortex-M4
+        floatingPointHardware: single
+        options: ""
+        scatterFilePath: ../Driver/CMSIS/GD/GD32F4xx/Source/GCC/Ld/gd32f470xE_app_flash.ld
+        storageLayout:
+          RAM: []
+          ROM: []
+        useCustomScatterFile: true
+    uploadConfigMap:
+      JLink:
+        baseAddr: ""
+        bin: ""
+        cpuInfo:
+          cpuName: "null"
+          vendor: "null"
+        otherCmds: ""
+        proType: 1
+        speed: 8000
+      OpenOCD:
+        baseAddr: "0x08000000"
+        bin: ""
+        interface: cmsis-dap
+        target: gd32f470
+    uploader: OpenOCD
+  IndustrialEmbedded_Boot:
+    cppPreprocessAttrs:
+      defineList:
+        - USE_STDPERIPH_DRIVER
+        - GD32F470
+        - NDEBUG
+      incList:
+        - .
+        - ../Driver/CMSIS/GD/GD32F4xx/Include
+        - ../Driver/CMSIS
+        - ../Libraries/Include
+        - ../App
+        - ../BSP
+        - ../Middleware/Protocol/inc
+        - ../Common/inc
+        - ../Bootloader/inc
+        - ../Middleware/Ringbuffer/inc
+        - ../Middleware/CLI/inc
+        - ../Middleware/FlashKV/inc
+        - .cmsis/include
+        - RTE/_IndustrialEmbedded_Boot
+      libList: []
+    excludeList: []
+    settings:
+      debugger: cortex-debug
+    toolchain: AC5
+    toolchainConfigMap:
+      AC5:
+        archExtensions: ""
+        cpuType: Cortex-M4
+        floatingPointHardware: single
+        options:
+          version: 4
+          afterBuildTasks:
+            - name: "[Copy linker output for Keil User Commands]"
+              abortAfterFailed: true
+              command: mkdir ${KEIL_OUTPUT_DIR} & copy "${OutDir}\${ProjectName}.axf" "${KEIL_OUTPUT_DIR}\${ProjectName}.axf"
+              disable: false
+            - name: D:\keil5\ARM\ARMCC\bin\fromelf.exe --bin -o "$L@L.bin" "#L"
+              abortAfterFailed: true
+              command: D:\keil5\ARM\ARMCC\bin\fromelf.exe --bin -o "${KEIL_OUTPUT_DIR}\${ProjectName}.bin" "${KEIL_OUTPUT_DIR}\${ProjectName}.axf"
+              disable: false
+          asm-compiler:
+            defines: []
+          beforeBuildTasks: []
+          c/cpp-compiler:
+            CXX_FLAGS: --diag_suppress=1 --diag_suppress=1295
+            C_FLAGS: --diag_suppress=1 --diag_suppress=1295
+            c99-mode: true
+            gnu-extensions: true
+            one-elf-section-per-function: true
+            optimization: level-0
+            warnings: all-warnings
+          global:
+            output-debug-info: enable
+            use-microLIB: true
+          linker:
+            $disableOutputTask: false
+            $outputTaskExcludes:
+              - .bin
+              - .s19
+            output-format: elf
+            ro-base: "0x08000000"
+            rw-base: "0x20000000"
+            xo-base: ""
+        scatterFilePath: ""
+        storageLayout:
+          RAM:
+            - id: 1
+              isChecked: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              noInit: false
+              tag: RAM
+            - id: 2
+              isChecked: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              noInit: false
+              tag: RAM
+            - id: 3
+              isChecked: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              noInit: false
+              tag: RAM
+            - id: 1
+              isChecked: true
+              mem:
+                size: "0x30000"
+                startAddr: "0x20000000"
+              noInit: false
+              tag: IRAM
+            - id: 2
+              isChecked: false
+              mem:
+                size: "0x10000"
+                startAddr: "0x10000000"
+              noInit: false
+              tag: IRAM
+          ROM:
+            - id: 1
+              isChecked: false
+              isStartup: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              tag: ROM
+            - id: 2
+              isChecked: false
+              isStartup: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              tag: ROM
+            - id: 3
+              isChecked: false
+              isStartup: false
+              mem:
+                size: "0x0"
+                startAddr: "0x0"
+              tag: ROM
+            - id: 1
+              isChecked: true
+              isStartup: true
+              mem:
+                size: "0x10000"
+                startAddr: "0x8000000"
               tag: IROM
             - id: 2
               isChecked: false
