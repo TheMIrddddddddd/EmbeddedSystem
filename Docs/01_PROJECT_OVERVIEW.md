@@ -1751,11 +1751,13 @@ _Static_assert(sizeof(upgrade_meta_t) == 68, "upgrade_meta_t must be 68 bytes");
 
 ## 十五、项目里程碑
 
+截至 2026-08-24，M0、M1、M2 已完成；当前下一阶段为 M3 FreeRTOS APP 骨架。M2 的验收在 PC 上完成，不依赖目标板，Flash KV 的真实 GD25Q40E 接入仍按后续 M3/M5 计划执行。
+
 | 阶段 | 内容 | 验收标准 |
 |---|---|---|
 | M0 硬件资源冻结 | 引脚/时钟/DMA 通道/中断优先级/Flash 擦除边界表 | 资源表完成,无冲突 |
 | M1 工程地基 | Boot/App 双工程、链接地址、向量跳转、最小 LED/OLED 验证 | 上电 Boot 5s 后跳 App,OLED 显示切换 |
-| M2 公共基础组件 | RingBuffer、CRC、CLI、Flash KV、协议编解码(单元测试) | 组件级测试通过 |
+| M2 公共基础组件 | RingBuffer、CRC、CLI、Flash KV 双扇区 GC、协议编解码、升级序列化(单元测试) | 78 项 PC 测试全部通过 |
 | M3 FreeRTOS APP 骨架 | 七任务、队列、事件组、FatFs 单任务所有权、看门狗监控 | 连续 24h 无看门狗复位 |
 | M4 采集与通信 | ADC/DMA、DAC 回读、自定义协议、Modbus,Python 回归测试同步加入 | A/B/C 类验收过,协议测试脚本通过 |
 | M5 TF 卡与告警 | 存储滚动、拔卡恢复、配置原子导入、告警状态机 | P 类验收过 |

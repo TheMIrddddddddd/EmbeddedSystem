@@ -3,7 +3,7 @@
 > 文档版本:V1.0 | 日期:2026-08-09
 > 定位:本文是《01_PROJECT_OVERVIEW.md》第十五章 M0~M7 里程碑的**执行级展开**——把每个里程碑翻译成「动作清单 → 产出文件 → 依赖 → 卡点 → 验收关卡」。
 > 使用方式:开发时照表执行,验收时对照《01》第十四章(A-01~Q-02)与第十四-2(稳定性)逐条验证;技术原理见《02_TECH_STACK.md》。
-> 当前工程状态:M0 硬件资源冻结与板级基础确认已完成;当前仍是单工程裸机 demo(0x08000000 全 Flash,Keil/EIDE 双工具链配置保留),尚未拆分 Boot/App,尚未移植 FreeRTOS,业务代码为零。
+> 当前工程状态:M0、M1 与 M2 已完成;当前进入 M3 准备阶段。M2 的公共组件均已在 PC 上完成验证,尚未移植 FreeRTOS,业务功能仍按 M3~M5 计划推进。
 
 ---
 
@@ -319,6 +319,15 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 **产出文件:** 各组件 `.c/.h` + PC 测试工程(`test/` 目录,不占 MCU 工程)。
 
 **验收关卡:** 组件级测试全过;**此阶段完全不依赖板子**,可与 M1 并行推进。
+
+#### M2 已闭合（2026-08-24）
+
+- 必做组件全部完成：CRC16、CRC32、RingBuffer、CLI Shell、自定义协议帧、Modbus RTU、Flash KV 与升级序列化。
+- Flash KV 已完成 PC raw Flash Mock 的单区追加写、提交标志、CRC 校验、双扇区轮换与 GC；GC 在有效 Key 数量超过临时收集容量时返回 `FLASH_KV_STATUS_NO_SPACE`，不会静默丢失数据。
+- 升级序列化已完成 `firmware_header`、`image_manifest`、`upgrade_meta` 的固定长度逐字段编解码、CRC 与 commit marker 校验。
+- PC 单元测试共 **78 项，0 失败**；测试工程位于 `test/`，不依赖 MCU 硬件。
+- `ebtn` 纯 C 机制为可选项，本阶段未实现，不阻塞 M2；GPIO 扫描、事件投递和 FreeRTOS 接入归入 M3。
+- 当前 Flash KV 仍是 PC Mock 实现；GD25Q40E 真实 SPI 驱动和 sector 0/1 接入归入 M3/M5 的硬件与业务集成。
 
 ---
 
