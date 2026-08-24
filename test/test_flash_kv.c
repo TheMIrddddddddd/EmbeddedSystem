@@ -196,3 +196,85 @@ void test_flash_kv_recovers_records_after_reinitialization(void)
     TEST_ASSERT_EQUAL(sizeof(expected), actual_length);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, actual, sizeof(expected));
 }
+
+void test_flash_kv_rejects_crc_corrupted_record(void)
+{
+    flash_kv_t context;
+    uint8_t storage[128];
+    const uint8_t expected[] = {1U, 2U};
+    uint8_t actual[sizeof(expected)] = {0};
+    size_t actual_length = 0U;
+
+    flash_kv_prepare(&context, storage, sizeof(storage));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", expected,
+                                   sizeof(expected)));
+
+    storage[5] ^= 0x01U;
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_CRC_ERROR,
+                      flash_kv_get(&context, "mode", actual,
+                                   sizeof(actual), &actual_length));
+    TEST_ASSERT_EQUAL(0U, actual_length);
+}
+
+void test_flash_kv_skips_uncommitted_record(void)
+{
+    flash_kv_t context;
+    uint8_t storage[128];
+    const uint8_t expected[] = {1U};
+    uint8_t actual[sizeof(expected)] = {0};
+    size_t actual_length = 0U;
+
+    flash_kv_prepare(&context, storage, sizeof(storage));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", expected,
+                                   sizeof(expected)));
+
+    storage[9] = 0xFFU;
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_NOT_FOUND,
+                      flash_kv_get(&context, "mode", actual,
+                                   sizeof(actual), &actual_length));
+    TEST_ASSERT_EQUAL(0U, actual_length);
+}
+
+void test_flash_kv_accepts_zero_length_value(void)
+{
+    flash_kv_t context;
+    uint8_t storage[128];
+    size_t actual_length = 99U;
+
+    flash_kv_prepare(&context, storage, sizeof(storage));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "empty", NULL, 0U));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_get(&context, "empty", NULL, 0U,
+                                   &actual_length));
+    TEST_ASSERT_EQUAL(0U, actual_length);
+}
+
+void test_flash_kv_uses_later_valid_record_after_crc_error(void)
+{
+    flash_kv_t context;
+    uint8_t storage[128];
+    const uint8_t first[] = {1U};
+    const uint8_t latest[] = {2U, 3U};
+    uint8_t actual[sizeof(latest)] = {0};
+    size_t actual_length = 0U;
+
+    flash_kv_prepare(&context, storage, sizeof(storage));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", first,
+                                   sizeof(first)));
+    storage[5] ^= 0x01U;
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", latest,
+                                   sizeof(latest)));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_get(&context, "mode", actual,
+                                   sizeof(actual), &actual_length));
+    TEST_ASSERT_EQUAL(sizeof(latest), actual_length);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(latest, actual, sizeof(latest));
+}

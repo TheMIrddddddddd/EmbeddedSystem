@@ -64,6 +64,10 @@ void test_flash_kv_rejects_oversized_key_and_value(void);
 void test_flash_kv_reports_small_output_buffer(void);
 void test_flash_kv_reports_no_space(void);
 void test_flash_kv_recovers_records_after_reinitialization(void);
+void test_flash_kv_rejects_crc_corrupted_record(void);
+void test_flash_kv_skips_uncommitted_record(void);
+void test_flash_kv_accepts_zero_length_value(void);
+void test_flash_kv_uses_later_valid_record_after_crc_error(void);
 
 int main(void)
 {
@@ -126,6 +130,10 @@ int main(void)
     RUN_TEST(test_flash_kv_reports_small_output_buffer);
     RUN_TEST(test_flash_kv_reports_no_space);
     RUN_TEST(test_flash_kv_recovers_records_after_reinitialization);
+    RUN_TEST(test_flash_kv_rejects_crc_corrupted_record);
+    RUN_TEST(test_flash_kv_skips_uncommitted_record);
+    RUN_TEST(test_flash_kv_accepts_zero_length_value);
+    RUN_TEST(test_flash_kv_uses_later_valid_record_after_crc_error);
 
     return UNITY_END();
 }
