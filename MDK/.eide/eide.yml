@@ -1,5 +1,5 @@
 version: "4.1"
-name: IndustrialEmbedded-Boot
+name: IndustrialEmbedded-App
 type: ARM
 deviceName: GD32F470VE
 packDir: .pack/GigaDevice/GD32F4xx_DFP.3.5.0
@@ -52,30 +52,31 @@ virtualFolder:
       files:
         - path: ../BSP/board_config.h
         - path: ../BSP/board_gpio.c
+        - path: ../BSP/board_usart.c
+      folders: []
+    - name: Middleware
+      files:
+        - path: ../Middleware/CLI/src/cli.c
+        - path: ../Middleware/Ringbuffer/src/ringbuffer.c
+        - path: ../Middleware/Protocol/src/protocol_frame.c
+        - path: ../Middleware/Protocol/src/modbus_rtu.c
+        - path: ../Middleware/FlashKV/src/flash_kv.c
       folders: []
     - name: Common
       files:
         - path: ../Common/src/common_crc.c
         - path: ../Common/src/systick.c
         - path: ../Common/inc/common_flash_layout.h
+        - path: ../Common/src/upgrade_serialization.c
       folders: []
-    - name: Bootloader
+    - name: App
       files: []
       folders:
         - name: src
           files:
-            - path: ../Bootloader/src/boot_jump.c
-            - path: ../Bootloader/src/boot_main.c
-            - path: ../Bootloader/src/gd32f4xx_it.c
+            - path: ../App/src/app_main.c
+            - path: ../App/src/gd32f4xx_it.c
           folders: []
-    - name: Middleware
-      files:
-        - path: ../Middleware/CLI/src/cli.c
-        - path: ../Middleware/Protocol/src/modbus_rtu.c
-        - path: ../Middleware/Protocol/src/protocol_frame.c
-        - path: ../Middleware/Ringbuffer/src/ringbuffer.c
-        - path: ../Middleware/FlashKV/src/flash_kv.c
-      folders: []
 dependenceList: []
 outDir: build
 miscInfo:
@@ -274,10 +275,12 @@ targets:
         - ../Libraries/Include
         - ../App
         - ../BSP
+        - ../Middleware
+        - ../Common/inc
         - ../Middleware/Ringbuffer/inc
         - ../Middleware/Protocol/inc
         - ../Middleware/CLI/inc
-        - ../Common/inc
+        - ../Middleware/FlashKV/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
       libList: []

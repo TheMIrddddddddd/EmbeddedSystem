@@ -278,3 +278,169 @@ void test_flash_kv_uses_later_valid_record_after_crc_error(void)
     TEST_ASSERT_EQUAL(sizeof(latest), actual_length);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(latest, actual, sizeof(latest));
 }
+
+void test_flash_kv_dual_initializes_and_persists_latest_value(void)
+{
+    flash_kv_t context;
+    flash_kv_t reopened;
+    uint8_t sector_a[96];
+    uint8_t sector_b[96];
+    const uint8_t first[] = {1U, 1U, 1U, 1U, 1U, 1U};
+    const uint8_t latest[] = {2U, 2U, 2U, 2U, 2U, 2U};
+    uint8_t actual[sizeof(latest)] = {0};
+    size_t actual_length = 0U;
+
+    memset(sector_a, 0xFF, sizeof(sector_a));
+    memset(sector_b, 0xFF, sizeof(sector_b));
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_init_dual(&context,
+                                         sector_a,
+                                         sector_b,
+                                         sizeof(sector_a)));
+    TEST_ASSERT_EQUAL(0U, context.active_sector);
+    TEST_ASSERT_EQUAL(1U, context.generation);
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", first,
+                                   sizeof(first)));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", latest,
+                                   sizeof(latest)));
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_init_dual(&reopened,
+                                         sector_a,
+                                         sector_b,
+                                         sizeof(sector_a)));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_get(&reopened, "mode", actual,
+                                   sizeof(actual), &actual_length));
+    TEST_ASSERT_EQUAL(sizeof(latest), actual_length);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(latest, actual, sizeof(latest));
+}
+
+void test_flash_kv_dual_runs_gc_and_preserves_latest_values(void)
+{
+    flash_kv_t context;
+    uint8_t sector_a[74];
+    uint8_t sector_b[74];
+    const uint8_t old_value[] = {1U, 2U, 3U, 4U, 5U, 6U};
+    const uint8_t latest_value[] = {9U, 8U, 7U, 6U, 5U, 4U};
+    const uint8_t other_value[] = {3U, 3U, 3U, 3U, 3U, 3U};
+    uint8_t actual[sizeof(latest_value)] = {0};
+    size_t actual_length = 0U;
+    size_t active_before_gc;
+
+    memset(sector_a, 0xFF, sizeof(sector_a));
+    memset(sector_b, 0xFF, sizeof(sector_b));
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_init_dual(&context,
+                                         sector_a,
+                                         sector_b,
+                                         sizeof(sector_a)));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", old_value,
+                                   sizeof(old_value)));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "other", other_value,
+                                   sizeof(other_value)));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", old_value,
+                                   sizeof(old_value)));
+    active_before_gc = context.active_sector;
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", latest_value,
+                                   sizeof(latest_value)));
+    TEST_ASSERT_NOT_EQUAL(active_before_gc, context.active_sector);
+    TEST_ASSERT_EQUAL(2U, context.generation);
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_get(&context, "mode", actual,
+                                   sizeof(actual), &actual_length));
+    TEST_ASSERT_EQUAL(sizeof(latest_value), actual_length);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(latest_value, actual,
+                                  sizeof(latest_value));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_get(&context, "other", actual,
+                                   sizeof(actual), &actual_length));
+    TEST_ASSERT_EQUAL(sizeof(other_value), actual_length);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(other_value, actual,
+                                  sizeof(other_value));
+}
+
+void test_flash_kv_dual_ignores_uncommitted_sector(void)
+{
+    flash_kv_t context;
+    uint8_t sector_a[96];
+    uint8_t sector_b[96];
+    const uint8_t expected[] = {4U, 5U, 6U};
+    uint8_t actual[sizeof(expected)] = {0};
+    size_t actual_length = 0U;
+
+    memset(sector_a, 0xFF, sizeof(sector_a));
+    memset(sector_b, 0xFF, sizeof(sector_b));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_init_dual(&context,
+                                         sector_a,
+                                         sector_b,
+                                         sizeof(sector_a)));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_set(&context, "mode", expected,
+                                   sizeof(expected)));
+
+    memcpy(sector_b, sector_a, FLASH_KV_SECTOR_HEADER_SIZE);
+    sector_b[8] = 0xFFU;
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_init_dual(&context,
+                                         sector_a,
+                                         sector_b,
+                                         sizeof(sector_a)));
+    TEST_ASSERT_EQUAL(0U, context.active_sector);
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_get(&context, "mode", actual,
+                                   sizeof(actual), &actual_length));
+    TEST_ASSERT_EQUAL(sizeof(expected), actual_length);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, actual, sizeof(expected));
+}
+
+void test_flash_kv_dual_rejects_gc_record_overflow(void)
+{
+    flash_kv_t context;
+    uint8_t sector_a[420];
+    uint8_t sector_b[420];
+    uint8_t value[10] = {0x5AU};
+    char key[4];
+    size_t i;
+
+    memset(sector_a, 0xFF, sizeof(sector_a));
+    memset(sector_b, 0xFF, sizeof(sector_b));
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                      flash_kv_init_dual(&context,
+                                         sector_a,
+                                         sector_b,
+                                         sizeof(sector_a)));
+
+    for (i = 0U; i < (FLASH_KV_MAX_RECORDS + 1U); i++)
+    {
+        key[0] = 'k';
+        key[1] = (char)('0' + (i / 10U));
+        key[2] = (char)('0' + (i % 10U));
+        key[3] = '\0';
+        TEST_ASSERT_EQUAL(FLASH_KV_STATUS_OK,
+                          flash_kv_set(&context, key, value,
+                                       sizeof(value)));
+    }
+
+    key[0] = 'k';
+    key[1] = '0';
+    key[2] = '0';
+    key[3] = '\0';
+
+    TEST_ASSERT_EQUAL(FLASH_KV_STATUS_NO_SPACE,
+                      flash_kv_set(&context, key, value, sizeof(value)));
+    TEST_ASSERT_EQUAL(0U, context.active_sector);
+    TEST_ASSERT_EQUAL(1U, context.generation);
+}

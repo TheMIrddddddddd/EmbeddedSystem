@@ -17,6 +17,7 @@ SRCS := \
     ../Middleware/Protocol/src/modbus_rtu.c \
     ../Middleware/CLI/src/cli.c \
     ../Middleware/FlashKV/src/flash_kv.c \
+    ../Common/src/upgrade_serialization.c \
     unity/unity.c \
     test_main.c \
     test_crc.c \
@@ -24,7 +25,8 @@ SRCS := \
     test_protocol_frame.c \
     test_modbus_rtu.c \
     test_cli.c \
-    test_flash_kv.c
+    test_flash_kv.c \
+    test_upgrade_serialization.c
 
 all: test
 

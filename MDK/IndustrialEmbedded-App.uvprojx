@@ -619,6 +619,11 @@
               <FileType>5</FileType>
               <FilePath>..\Common\inc\common_flash_layout.h</FilePath>
             </File>
+            <File>
+              <FileName>upgrade_serialization.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Common\src\upgrade_serialization.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

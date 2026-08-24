@@ -68,6 +68,29 @@ void test_flash_kv_rejects_crc_corrupted_record(void);
 void test_flash_kv_skips_uncommitted_record(void);
 void test_flash_kv_accepts_zero_length_value(void);
 void test_flash_kv_uses_later_valid_record_after_crc_error(void);
+void test_flash_kv_dual_initializes_and_persists_latest_value(void);
+void test_flash_kv_dual_runs_gc_and_preserves_latest_values(void);
+void test_flash_kv_dual_ignores_uncommitted_sector(void);
+void test_flash_kv_dual_rejects_gc_record_overflow(void);
+void test_firmware_header_encode_decode_roundtrip(void);
+void test_firmware_header_uses_little_endian_fields(void);
+void test_firmware_header_rejects_invalid_arguments(void);
+void test_firmware_header_rejects_small_buffer(void);
+void test_firmware_header_rejects_invalid_fields(void);
+void test_firmware_header_rejects_crc_error(void);
+void test_image_manifest_encode_decode_roundtrip(void);
+void test_image_manifest_uses_little_endian_fields(void);
+void test_image_manifest_rejects_invalid_arguments(void);
+void test_image_manifest_rejects_small_buffer(void);
+void test_image_manifest_rejects_invalid_fields(void);
+void test_image_manifest_rejects_crc_error(void);
+void test_upgrade_meta_encode_decode_roundtrip(void);
+void test_upgrade_meta_uses_fixed_little_endian_layout(void);
+void test_upgrade_meta_rejects_invalid_arguments(void);
+void test_upgrade_meta_rejects_small_buffer(void);
+void test_upgrade_meta_rejects_invalid_fields(void);
+void test_upgrade_meta_rejects_crc_error(void);
+void test_upgrade_meta_rejects_invalid_commit_marker(void);
 
 int main(void)
 {
@@ -134,6 +157,32 @@ int main(void)
     RUN_TEST(test_flash_kv_skips_uncommitted_record);
     RUN_TEST(test_flash_kv_accepts_zero_length_value);
     RUN_TEST(test_flash_kv_uses_later_valid_record_after_crc_error);
+    RUN_TEST(test_flash_kv_dual_initializes_and_persists_latest_value);
+    RUN_TEST(test_flash_kv_dual_runs_gc_and_preserves_latest_values);
+    RUN_TEST(test_flash_kv_dual_ignores_uncommitted_sector);
+    RUN_TEST(test_flash_kv_dual_rejects_gc_record_overflow);
+
+    RUN_TEST(test_firmware_header_encode_decode_roundtrip);
+    RUN_TEST(test_firmware_header_uses_little_endian_fields);
+    RUN_TEST(test_firmware_header_rejects_invalid_arguments);
+    RUN_TEST(test_firmware_header_rejects_small_buffer);
+    RUN_TEST(test_firmware_header_rejects_invalid_fields);
+    RUN_TEST(test_firmware_header_rejects_crc_error);
+
+    RUN_TEST(test_image_manifest_encode_decode_roundtrip);
+    RUN_TEST(test_image_manifest_uses_little_endian_fields);
+    RUN_TEST(test_image_manifest_rejects_invalid_arguments);
+    RUN_TEST(test_image_manifest_rejects_small_buffer);
+    RUN_TEST(test_image_manifest_rejects_invalid_fields);
+    RUN_TEST(test_image_manifest_rejects_crc_error);
+
+    RUN_TEST(test_upgrade_meta_encode_decode_roundtrip);
+    RUN_TEST(test_upgrade_meta_uses_fixed_little_endian_layout);
+    RUN_TEST(test_upgrade_meta_rejects_invalid_arguments);
+    RUN_TEST(test_upgrade_meta_rejects_small_buffer);
+    RUN_TEST(test_upgrade_meta_rejects_invalid_fields);
+    RUN_TEST(test_upgrade_meta_rejects_crc_error);
+    RUN_TEST(test_upgrade_meta_rejects_invalid_commit_marker);
 
     return UNITY_END();
 }
