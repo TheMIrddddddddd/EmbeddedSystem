@@ -142,8 +142,8 @@ void board_usart0_init(void)
 
     board_usart0_rx_dma_init();
 
-    nvic_irq_enable(USART0_IRQn, 1U, 0U);
-    nvic_irq_enable(DMA1_Channel2_IRQn, 1U, 1U);
+    nvic_irq_enable(USART0_IRQn, 6U, 0U);
+    nvic_irq_enable(DMA1_Channel2_IRQn, 7U, 0U);
     usart_interrupt_disable(USART0, USART_INT_RBNE);
     usart_interrupt_enable(USART0, USART_INT_IDLE);
 }
@@ -175,8 +175,8 @@ static void board_usart1_rs485_rx_dma_init(void)
     dma_channel_enable(BOARD_USART1_RS485_RX_DMA_PERIPH, BOARD_USART1_RS485_RX_DMA_CHANNEL);
     usart_dma_receive_config(USART1, USART_RECEIVE_DMA_ENABLE);
 
-    nvic_irq_enable(USART1_IRQn, 1U, 0U);
-    nvic_irq_enable(DMA0_Channel5_IRQn, 1U, 1U);
+    nvic_irq_enable(USART1_IRQn, 6U, 0U);
+    nvic_irq_enable(DMA0_Channel5_IRQn, 7U, 0U);
     usart_interrupt_disable(USART1, USART_INT_RBNE);
     usart_interrupt_enable(USART1, USART_INT_IDLE);
 }

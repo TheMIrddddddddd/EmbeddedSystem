@@ -65,7 +65,6 @@ virtualFolder:
     - name: Common
       files:
         - path: ../Common/src/common_crc.c
-        - path: ../Common/src/systick.c
         - path: ../Common/inc/common_flash_layout.h
         - path: ../Common/src/upgrade_serialization.c
       folders: []
@@ -76,6 +75,26 @@ virtualFolder:
           files:
             - path: ../App/src/app_main.c
             - path: ../App/src/gd32f4xx_it.c
+            - path: ../App/src/freertos_static.c
+          folders: []
+        - name: config
+          files:
+            - path: ../App/config/FreeRTOSConfig.h
+          folders: []
+    - name: FreeRTOS
+      files: []
+      folders:
+        - name: Kernel
+          files:
+            - path: ../Middleware/FreeRTOS/Kernel/event_groups.c
+            - path: ../Middleware/FreeRTOS/Kernel/list.c
+            - path: ../Middleware/FreeRTOS/Kernel/queue.c
+            - path: ../Middleware/FreeRTOS/Kernel/tasks.c
+            - path: ../Middleware/FreeRTOS/Kernel/timers.c
+          folders: []
+        - name: Portable
+          files:
+            - path: ../Middleware/FreeRTOS/Kernel/portable/RVDS/ARM_CM4F/port.c
           folders: []
 dependenceList: []
 outDir: build
@@ -281,6 +300,9 @@ targets:
         - ../Middleware/Protocol/inc
         - ../Middleware/CLI/inc
         - ../Middleware/FlashKV/inc
+        - ../Middleware/FreeRTOS/Kernel/include
+        - ../Middleware/FreeRTOS/Kernel/portable/RVDS/ARM_CM4F
+        - ../App/config
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
       libList: []

@@ -222,6 +222,9 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Protocol\\inc",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\CLI\\inc",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FlashKV\\inc",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FreeRTOS\\Kernel\\include",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FreeRTOS\\Kernel\\portable\\RVDS\\ARM_CM4F",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\App\\config",
                 "D:\\keil5\\ARM\\ARMCC\\include",
                 "D:\\keil5\\ARM\\ARMCC\\include\\rw",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Driver\\CMSIS\\GD\\GD32F4xx\\Source\\ARM",
@@ -232,7 +235,8 @@
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\Protocol\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FlashKV\\src",
                 "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Common\\src",
-                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\App\\src"
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\App\\src",
+                "d:\\STM322222222222222222222\\GD32_SieMens\\IndustrialEmbedded\\Middleware\\FreeRTOS\\Kernel"
             ],
             "defines": [
                 "USE_STDPERIPH_DRIVER",

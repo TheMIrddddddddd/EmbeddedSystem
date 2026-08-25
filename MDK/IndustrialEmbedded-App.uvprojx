@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -610,11 +610,6 @@
               <FilePath>..\Common\src\common_crc.c</FilePath>
             </File>
             <File>
-              <FileName>systick.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Common\src\systick.c</FilePath>
-            </File>
-            <File>
               <FileName>common_flash_layout.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Common\inc\common_flash_layout.h</FilePath>
@@ -638,6 +633,61 @@
               <FileName>gd32f4xx_it.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\src\gd32f4xx_it.c</FilePath>
+            </File>
+            <File>
+              <FileName>freertos_static.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\freertos_static.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>FreeRTOS/Kernel</GroupName>
+          <Files>
+            <File>
+              <FileName>event_groups.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\event_groups.c</FilePath>
+            </File>
+            <File>
+              <FileName>list.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\list.c</FilePath>
+            </File>
+            <File>
+              <FileName>queue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\queue.c</FilePath>
+            </File>
+            <File>
+              <FileName>tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\tasks.c</FilePath>
+            </File>
+            <File>
+              <FileName>timers.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\timers.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>FreeRTOS/Portable</GroupName>
+          <Files>
+            <File>
+              <FileName>port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F\port.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>App/config</GroupName>
+          <Files>
+            <File>
+              <FileName>FreeRTOSConfig.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\App\config\FreeRTOSConfig.h</FilePath>
             </File>
           </Files>
         </Group>
