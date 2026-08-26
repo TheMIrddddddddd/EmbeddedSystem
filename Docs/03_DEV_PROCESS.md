@@ -355,6 +355,42 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **风险点:** 静态任务栈与内核对象 RAM 预算(十六-5)、IdleTask/Timer Service Task 的静态内存回调、喂狗豁免规则(十六-3.1)、DisplayTask 不得直接改业务状态。
 
+### M3-2-5 当前 App RAM 基线（2026-08-26）
+
+本基线来自当前 App 构建生成的 map 文件：
+
+`MDK/build/IndustrialEmbedded_App/IndustrialEmbedded-App.map`
+
+| 项目 | 实测值 |
+|---|---:|
+| RAM 执行区基址 | `0x20000000` |
+| RAM 执行区上限 | `0x30000`（192 KB，196608 B） |
+| `Total RW Size`（RW Data + ZI Data） | 9328 B（约 9.11 KB） |
+| RAM 剩余（按执行区上限估算） | 187280 B（约 182.89 KB） |
+| RAM 使用率（按执行区上限估算） | 约 4.75% |
+| `Total RO Size` | 10588 B（约 10.34 KB） |
+| `Total ROM Size` | 10776 B（约 10.52 KB） |
+
+当前静态任务和内核对象拆分如下：
+
+| 对象/模块 | map 中的占用 |
+|---|---:|
+| TestTask TCB | 104 B |
+| TestTask 栈（256 words） | 1024 B |
+| IdleTask TCB | 104 B |
+| IdleTask 栈（128 words） | 512 B |
+| Timer Service Task TCB | 104 B |
+| Timer Service Task 栈（256 words） | 1024 B |
+| `freertos_static.o` `.bss` 合计 | 1744 B |
+| `queue.o` `.bss` | 128 B |
+| `tasks.o` `.bss` | 240 B |
+| `timers.o` `.bss` | 216 B |
+| 启动栈 `STACK` | 1024 B |
+
+说明：`Total RW Size` 包含初始化数据和零初始化数据，也包含链接器报告的启动栈；上述任务栈水位是运行时“历史最小剩余栈”，不能替代 map 中的静态分配统计。当前 App 未纳入 `heap_1.c`、`heap_2.c`、`heap_4.c` 或 `heap_5.c`，FreeRTOS 采用静态分配策略。
+
+**M3-2-5 状态:** 已完成当前最小调度骨架的 RAM 基线记录。后续每加入任务、队列、事件组、互斥锁、软件定时器或 DMA/FatFs 缓冲区，必须重新构建并与本基线比较 `Total RW Size`、执行区剩余空间和各对象占用。
+
 ---
 
 ## 七、M4:采集与通信

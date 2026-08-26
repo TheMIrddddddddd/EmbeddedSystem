@@ -186,7 +186,7 @@ uint64_t freertos_runtime_stats_get(void);
 #define INCLUDE_vTaskSuspend                    1
 
 #define INCLUDE_xTaskDelayUntil                 1
-#define INCLUDE_xTaskDelay                      1
+#define INCLUDE_vTaskDelay                      1
 #define INCLUDE_xTaskGetSchedulerState          1
 #define INCLUDE_xTaskGetCurrentTaskHandle       1
 
@@ -194,7 +194,7 @@ uint64_t freertos_runtime_stats_get(void);
 #define INCLUDE_uxTaskGetStackHighWaterMark     0
 #define INCLUDE_uxTaskGetStackHighWaterMark2    1
 
-#define INCLUDE_xTaskGetIdleTaskHandle          0
+#define INCLUDE_xTaskGetIdleTaskHandle          1
 #define INCLUDE_eTaskGetState                   0
 #define INCLUDE_xTimerPendFunctionCall          0
 #define INCLUDE_xTaskAbortDelay                 0

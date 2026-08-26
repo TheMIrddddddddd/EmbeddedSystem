@@ -96,6 +96,17 @@ virtualFolder:
           files:
             - path: ../Middleware/FreeRTOS/Kernel/portable/RVDS/ARM_CM4F/port.c
           folders: []
+    - name: Tasks
+      files:
+        - path: ../Tasks/src/protocol_task.c
+        - path: ../Tasks/src/alarm_task.c
+        - path: ../Tasks/src/control_task.c
+        - path: ../Tasks/src/display_task.c
+        - path: ../Tasks/src/health_task.c
+        - path: ../Tasks/src/sample_task.c
+        - path: ../Tasks/src/storage_task.c
+        - path: ../Tasks/src/app_task.c
+      folders: []
 dependenceList: []
 outDir: build
 miscInfo:
@@ -303,6 +314,7 @@ targets:
         - ../Middleware/FreeRTOS/Kernel/include
         - ../Middleware/FreeRTOS/Kernel/portable/RVDS/ARM_CM4F
         - ../App/config
+        - ../Tasks/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
       libList: []

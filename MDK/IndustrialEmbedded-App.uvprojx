@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config;..\Tasks\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -688,6 +688,51 @@
               <FileName>FreeRTOSConfig.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\App\config\FreeRTOSConfig.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Tasks</GroupName>
+          <Files>
+            <File>
+              <FileName>protocol_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\protocol_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>alarm_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\alarm_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>control_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\control_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>display_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\display_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>health_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\health_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>sample_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\sample_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>storage_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\storage_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\app_task.c</FilePath>
             </File>
           </Files>
         </Group>
