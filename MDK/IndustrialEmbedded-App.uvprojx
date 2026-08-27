@@ -734,6 +734,26 @@
               <FileType>1</FileType>
               <FilePath>..\Tasks\src\app_task.c</FilePath>
             </File>
+            <File>
+              <FileName>task_queues.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\task_queues.c</FilePath>
+            </File>
+            <File>
+              <FileName>task_events.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\task_events.c</FilePath>
+            </File>
+            <File>
+              <FileName>task_mutex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\task_mutex.c</FilePath>
+            </File>
+            <File>
+              <FileName>task_timer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\task_timer.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>

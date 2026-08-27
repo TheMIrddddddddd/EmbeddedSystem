@@ -1,6 +1,7 @@
 #include "storage_task.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "task_mutex.h"
 
 #define STORAGE_TASK_PRIORITY          3U
 #define STORAGE_TASK_STACK_DEPTH       512U
@@ -16,7 +17,12 @@ static void storage_task(void *argument)
 
     for(;;)
     {
-        s_storage_task_heartbeat++;
+        if (xSemaphoreTake(task_mutex_get(), pdMS_TO_TICKS(10U)) == pdTRUE) {
+
+            s_storage_task_heartbeat++;
+
+            xSemaphoreGive(task_mutex_get());
+        }
 
         vTaskDelay(pdMS_TO_TICKS(10U));
     }
