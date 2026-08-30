@@ -5,6 +5,7 @@
 #include "task_events.h"
 #include "task_mutex.h"
 
+
 #define CONTROL_TASK_PRIORITY          3U
 #define CONTROL_TASK_STACK_DEPTH       256U
 
@@ -15,23 +16,19 @@ static volatile uint32_t s_control_task_heartbeat;
 
 static void control_task(void *argument)
 {
-    protocol_request_t request;
+    key_event_t key_event;
 
     (void)argument;
 
     for(;;)
     {
-        // if (protocol_request_receive(&request, portMAX_DELAY) == pdTRUE)
-        // {
-        //     s_control_task_heartbeat++;
-        // }
-        xEventGroupSetBits(task_events_get(), TASK_EVENT_SYSTEM_READY);
-
-        if (xSemaphoreTake(task_mutex_get(), pdMS_TO_TICKS(10U)) == pdTRUE)
+        if (key_event_receive(&key_event, 0U) == pdTRUE)
         {
-            s_control_task_heartbeat++;
-            xSemaphoreGive(task_mutex_get());
+            
         }
+
+        s_control_task_heartbeat++;
+
         vTaskDelay(pdMS_TO_TICKS(10U));
     }
 }

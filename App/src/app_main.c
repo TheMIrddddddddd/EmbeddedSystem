@@ -8,6 +8,7 @@
 #include "app_task.h"
 
 #include "board_gpio.h"
+#include "board_key.h"
 #include "board_spi_flash.h"
 #include "common_flash_layout.h"
 
@@ -24,7 +25,8 @@ int main(void)
     nvic_priority_group_set(NVIC_PRIGROUP_PRE4_SUB0);
 
     board_led_init();
-
+    board_key_init();
+    
     if (board_spi_flash_init() == 0) {
         __disable_irq();
 

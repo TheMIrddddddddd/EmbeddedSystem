@@ -54,6 +54,7 @@ virtualFolder:
         - path: ../BSP/board_gpio.c
         - path: ../BSP/board_usart.c
         - path: ../BSP/board_spi_flash.c
+        - path: ../BSP/board_key.c
       folders: []
     - name: Middleware
       files:
@@ -62,6 +63,8 @@ virtualFolder:
         - path: ../Middleware/Protocol/src/protocol_frame.c
         - path: ../Middleware/Protocol/src/modbus_rtu.c
         - path: ../Middleware/FlashKV/src/flash_kv.c
+        - path: ../Middleware/Ebtn/src/ebtn.c
+        - path: ../Middleware/Ebtn/inc/bit_array.h
       folders: []
     - name: Common
       files:
@@ -321,6 +324,7 @@ targets:
         - ../Middleware/FreeRTOS/Kernel/portable/RVDS/ARM_CM4F
         - ../App/config
         - ../Tasks/inc
+        - ../Middleware/Ebtn/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
       libList: []

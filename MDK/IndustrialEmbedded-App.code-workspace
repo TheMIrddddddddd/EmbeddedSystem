@@ -5,7 +5,7 @@
         }
     ],
     "settings": {
-        "cortex-debug.variableUseNaturalFormat": false
+        "cortex-debug.variableUseNaturalFormat": true
     },
     "extensions": {}
 }

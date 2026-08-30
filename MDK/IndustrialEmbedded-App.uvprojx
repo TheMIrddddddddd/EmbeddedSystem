@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config;..\Tasks\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config;..\Tasks\inc;..\Middleware\Ebtn\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -574,6 +574,11 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\board_spi_flash.c</FilePath>
             </File>
+            <File>
+              <FileName>board_key.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_key.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -603,6 +608,16 @@
               <FileName>flash_kv.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Middleware\FlashKV\src\flash_kv.c</FilePath>
+            </File>
+            <File>
+              <FileName>ebtn.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Ebtn\src\ebtn.c</FilePath>
+            </File>
+            <File>
+              <FileName>bit_array.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Middleware\Ebtn\inc\bit_array.h</FilePath>
             </File>
           </Files>
         </Group>
