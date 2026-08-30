@@ -53,6 +53,7 @@ virtualFolder:
         - path: ../BSP/board_config.h
         - path: ../BSP/board_gpio.c
         - path: ../BSP/board_usart.c
+        - path: ../BSP/board_spi_flash.c
       folders: []
     - name: Middleware
       files:
@@ -67,6 +68,7 @@ virtualFolder:
         - path: ../Common/src/common_crc.c
         - path: ../Common/inc/common_flash_layout.h
         - path: ../Common/src/upgrade_serialization.c
+        - path: ../Common/inc/common_reset_contract.h
       folders: []
     - name: App
       files: []

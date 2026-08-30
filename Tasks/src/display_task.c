@@ -10,6 +10,7 @@
 static StaticTask_t s_display_task_tcb;
 static StackType_t  s_display_task_stack[DISPLAY_TASK_STACK_DEPTH];
 
+static volatile uint32_t s_display_task_heartbeat;
 static volatile EventBits_t s_display_event_bits;
 
 
@@ -26,6 +27,8 @@ static void display_task(void *argument)
   
     for(;;)
     {
+        s_display_task_heartbeat++;
+
         led_state = (uint8_t)!led_state;
         board_led_set(1U, led_state);
 
@@ -57,4 +60,9 @@ int display_task_create(void)
     }
     
     return 1;
+}
+
+uint32_t display_task_get_heartbeat(void)
+{
+    return s_display_task_heartbeat;
 }

@@ -57,3 +57,8 @@ int control_task_create(void)
     
     return 1;
 }
+
+uint32_t control_task_get_heartbeat(void)
+{
+    return s_control_task_heartbeat;
+}

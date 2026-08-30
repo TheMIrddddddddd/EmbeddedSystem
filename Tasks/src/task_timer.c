@@ -34,6 +34,7 @@ int task_timer_init(void)
     if (xTimerStart(s_task_timer_handle, 0U) != pdPASS) {
         return 0;
     }
+    return 1;
 }
 
 uint32_t task_timer_get_count(void)

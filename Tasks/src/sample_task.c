@@ -43,3 +43,8 @@ int sample_task_create(void)
     
     return 1;
 }
+
+uint32_t sample_task_get_heartbeat(void)
+{
+    return s_sample_task_heartbeat;
+}

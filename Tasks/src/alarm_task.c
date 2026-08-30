@@ -43,3 +43,8 @@ int alarm_task_create(void)
     
     return 1;
 }
+
+uint32_t alarm_task_get_heartbeat(void)
+{
+    return s_alarm_task_heartbeat;
+}

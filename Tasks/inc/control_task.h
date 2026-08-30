@@ -4,5 +4,6 @@
 #include <stdint.h>
 
 int control_task_create(void);
+uint32_t control_task_get_heartbeat(void);
 
 #endif /* CONTROL_TASK_H */

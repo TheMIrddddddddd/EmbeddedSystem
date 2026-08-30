@@ -29,7 +29,7 @@ static void protocol_task(void *argument)
         request.request_id++;
         protocol_request_send(&request);
 
-        vTaskDelay(pdMS_TO_TICKS(1000U));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -53,4 +53,9 @@ int protocol_task_create(void)
     }
     
     return 1;
+}
+
+uint32_t protocol_task_get_heartbeat(void)
+{
+    return s_protocol_task_heartbeat;
 }

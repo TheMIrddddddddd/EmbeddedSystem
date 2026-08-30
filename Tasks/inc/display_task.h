@@ -4,5 +4,6 @@
 #include <stdint.h>
 
 int display_task_create(void);
+uint32_t display_task_get_heartbeat(void);
 
 #endif /* DISPLAY_TASK_H */

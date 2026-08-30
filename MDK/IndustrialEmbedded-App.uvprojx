@@ -569,6 +569,11 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\board_usart.c</FilePath>
             </File>
+            <File>
+              <FileName>board_spi_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_spi_flash.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -618,6 +623,11 @@
               <FileName>upgrade_serialization.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\src\upgrade_serialization.c</FilePath>
+            </File>
+            <File>
+              <FileName>common_reset_contract.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Common\inc\common_reset_contract.h</FilePath>
             </File>
           </Files>
         </Group>
