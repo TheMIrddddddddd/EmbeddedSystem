@@ -156,7 +156,7 @@ void USART0_IRQHandler(void)
     board_usart0_irq_handler();
 }
 
-void DMA1_Channel2_IRQHandler(void)
+void DMA1_Channel5_IRQHandler(void)
 {
     board_usart0_rx_dma_irq_handler();
 }

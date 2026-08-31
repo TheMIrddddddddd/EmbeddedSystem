@@ -19,7 +19,7 @@
 
 #define BOARD_USART0_RX_DMA_BUFFER_SIZE     512U
 #define BOARD_USART0_RX_DMA_PERIPH          DMA1
-#define BOARD_USART0_RX_DMA_CHANNEL         DMA_CH2
+#define BOARD_USART0_RX_DMA_CHANNEL         DMA_CH5
 #define BOARD_USART0_RX_DMA_SUBPERIPH       DMA_SUBPERI4
 
 #define BOARD_USART1_RS485_RX_DMA_BUFFER_SIZE     512U
@@ -143,7 +143,7 @@ void board_usart0_init(void)
     board_usart0_rx_dma_init();
 
     nvic_irq_enable(USART0_IRQn, 6U, 0U);
-    nvic_irq_enable(DMA1_Channel2_IRQn, 7U, 0U);
+    nvic_irq_enable(DMA1_Channel5_IRQn, 7U, 0U);
     usart_interrupt_disable(USART0, USART_INT_RBNE);
     usart_interrupt_enable(USART0, USART_INT_IDLE);
 }

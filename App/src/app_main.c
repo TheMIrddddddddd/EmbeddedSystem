@@ -10,6 +10,7 @@
 #include "board_gpio.h"
 #include "board_key.h"
 #include "board_spi_flash.h"
+#include "board_usart.h"
 #include "common_flash_layout.h"
 
 volatile uint8_t g_flash_jedec_id[3];
@@ -26,7 +27,9 @@ int main(void)
 
     board_led_init();
     board_key_init();
-    
+    board_usart0_init();
+    board_usart1_rs485_init();
+
     if (board_spi_flash_init() == 0) {
         __disable_irq();
 
