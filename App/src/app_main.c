@@ -11,6 +11,8 @@
 #include "board_key.h"
 #include "board_spi_flash.h"
 #include "board_usart.h"
+#include "board_i2c.h"
+#include "board_oled.h"
 #include "common_flash_layout.h"
 
 volatile uint8_t g_flash_jedec_id[3];
@@ -30,6 +32,24 @@ int main(void)
     board_usart0_init();
     board_usart1_rs485_init();
 
+    if (board_i2c0_init() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+    
+    if (board_oled_init() != BOARD_OLED_STATUS_OK)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+    
     if (board_spi_flash_init() == 0) {
         __disable_irq();
 

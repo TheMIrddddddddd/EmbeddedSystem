@@ -2,6 +2,7 @@
 
 #include "board_gpio.h"
 #include "board_key.h"
+#include "board_oled.h"
 #include "ebtn.h"
 
 #include "FreeRTOS.h"
@@ -41,6 +42,45 @@ static ebtn_btn_t s_ebtn_keys[6] =
 static volatile uint16_t s_last_key_id;
 static volatile ebtn_evt_t s_last_key_event;
 static volatile uint8_t s_ebtn_init_ok;
+
+static uint8_t s_oled_test_framebuffer[BOARD_OLED_FRAMEBUFFER_SIZE];
+static volatile uint8_t s_oled_test_refresh_ok;
+
+static int display_oled_test_run(void)
+{
+    uint8_t page;
+    uint16_t column;
+    uint8_t page_value;
+
+    for (page = 0U; page < BOARD_OLED_PAGE_COUNT; page++)
+    {
+        if ((page & 1U) == 0U)
+        {
+            page_value = 0xFFU;
+        }
+        else
+        {
+            page_value = 0x00U;
+        }
+
+        for (column = 0U; column < BOARD_OLED_WIDTH; column++)
+        {
+            s_oled_test_framebuffer[
+                (uint16_t)page * BOARD_OLED_WIDTH + column] = page_value;
+        }
+    }
+
+    if (board_oled_refresh(
+            s_oled_test_framebuffer,
+            BOARD_OLED_FRAMEBUFFER_SIZE) != BOARD_OLED_STATUS_OK)
+    {
+        s_oled_test_refresh_ok = 0U;
+        return 0;
+    }
+
+    s_oled_test_refresh_ok = 1U;
+    return 1;
+}
 
 static uint8_t display_key_get_state(ebtn_btn_t *btn)
 {
@@ -98,6 +138,15 @@ static void display_task(void *argument)
         }
     }
     
+    if (display_oled_test_run() == 0)
+    {
+        taskDISABLE_INTERRUPTS();
+
+        for (;;)
+        {
+        }
+    }
+
     for (;;)
     {
         TickType_t now_tick;

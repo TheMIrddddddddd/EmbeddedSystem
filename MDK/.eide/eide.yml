@@ -55,6 +55,8 @@ virtualFolder:
         - path: ../BSP/board_usart.c
         - path: ../BSP/board_spi_flash.c
         - path: ../BSP/board_key.c
+        - path: ../BSP/board_i2c.c
+        - path: ../BSP/board_oled.c
       folders: []
     - name: Middleware
       files:
