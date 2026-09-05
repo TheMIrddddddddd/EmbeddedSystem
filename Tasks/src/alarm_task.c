@@ -9,6 +9,7 @@ static StaticTask_t s_alarm_task_tcb;
 static StackType_t  s_alarm_task_stack[ALARM_TASK_STACK_DEPTH];
 
 static volatile uint32_t s_alarm_task_heartbeat;
+static volatile uint32_t s_alarm_task_stack_high_water_mark;
 
 static void alarm_task(void *argument)
 {
@@ -16,6 +17,8 @@ static void alarm_task(void *argument)
 
     for(;;)
     {
+        s_alarm_task_stack_high_water_mark =
+            (uint32_t)uxTaskGetStackHighWaterMark2(NULL);
         s_alarm_task_heartbeat++;
 
         vTaskDelay(pdMS_TO_TICKS(10U));
@@ -47,4 +50,9 @@ int alarm_task_create(void)
 uint32_t alarm_task_get_heartbeat(void)
 {
     return s_alarm_task_heartbeat;
+}
+
+uint32_t alarm_task_get_stack_high_water_mark(void)
+{
+    return s_alarm_task_stack_high_water_mark;
 }

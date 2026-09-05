@@ -35,7 +35,7 @@ OF SUCH DAMAGE.
 #include "gd32f4xx_it.h"
 #include "systick.h"
 #include "board_usart.h"
-
+#include "board_sdio.h"
 /*!
     \brief      this function handles NMI exception
     \param[in]  none
@@ -169,4 +169,14 @@ void USART1_IRQHandler(void)
 void DMA0_Channel5_IRQHandler(void)
 {
     board_usart1_rs485_rx_dma_irq_handler();
+}
+
+void DMA1_Channel6_IRQHandler(void)
+{
+    board_sdio_dma_irq_handler();
+}
+
+void SDIO_IRQHandler(void)
+{
+    board_sdio_irq_handler();
 }

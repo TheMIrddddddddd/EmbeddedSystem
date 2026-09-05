@@ -1,14 +1,11 @@
 #include "display_task.h"
 
-#include "board_gpio.h"
 #include "board_key.h"
-#include "board_oled.h"
 #include "ebtn.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "task_events.h"
 #include "task_queues.h"
 
 #define DISPLAY_TASK_PRIORITY          2U
@@ -18,6 +15,7 @@ static StaticTask_t s_display_task_tcb;
 static StackType_t  s_display_task_stack[DISPLAY_TASK_STACK_DEPTH];
 
 static volatile uint32_t s_display_task_heartbeat;
+static volatile uint32_t s_display_task_stack_high_water_mark;
 
 static const ebtn_btn_param_t s_key_param =
     EBTN_PARAMS_INIT(
@@ -38,49 +36,6 @@ static ebtn_btn_t s_ebtn_keys[6] =
     EBTN_BUTTON_INIT(5U, &s_key_param),
     EBTN_BUTTON_INIT(6U, &s_key_param)
 };
-
-static volatile uint16_t s_last_key_id;
-static volatile ebtn_evt_t s_last_key_event;
-static volatile uint8_t s_ebtn_init_ok;
-
-static uint8_t s_oled_test_framebuffer[BOARD_OLED_FRAMEBUFFER_SIZE];
-static volatile uint8_t s_oled_test_refresh_ok;
-
-static int display_oled_test_run(void)
-{
-    uint8_t page;
-    uint16_t column;
-    uint8_t page_value;
-
-    for (page = 0U; page < BOARD_OLED_PAGE_COUNT; page++)
-    {
-        if ((page & 1U) == 0U)
-        {
-            page_value = 0xFFU;
-        }
-        else
-        {
-            page_value = 0x00U;
-        }
-
-        for (column = 0U; column < BOARD_OLED_WIDTH; column++)
-        {
-            s_oled_test_framebuffer[
-                (uint16_t)page * BOARD_OLED_WIDTH + column] = page_value;
-        }
-    }
-
-    if (board_oled_refresh(
-            s_oled_test_framebuffer,
-            BOARD_OLED_FRAMEBUFFER_SIZE) != BOARD_OLED_STATUS_OK)
-    {
-        s_oled_test_refresh_ok = 0U;
-        return 0;
-    }
-
-    s_oled_test_refresh_ok = 1U;
-    return 1;
-}
 
 static uint8_t display_key_get_state(ebtn_btn_t *btn)
 {
@@ -107,9 +62,6 @@ static void display_key_event(ebtn_btn_t *btn, ebtn_evt_t event)
         return;
     }
     
-    s_last_key_id = btn->key_id;
-    s_last_key_event = event;
-
     key_event.key_id = btn->key_id;
     key_event.event  = (uint8_t)event;
     key_event.reserved = 0U;
@@ -120,17 +72,19 @@ static void display_key_event(ebtn_btn_t *btn, ebtn_evt_t event)
 
 static void display_task(void *argument)
 {   
-    static uint8_t led_no = 1U;
-    TickType_t last_led_tick;
+    uint8_t ebtn_init_ok;
 
     (void)argument;
-    
-    last_led_tick = xTaskGetTickCount();
-    board_led_set(led_no, 1U);
 
-    s_ebtn_init_ok = (uint8_t)ebtn_init(s_ebtn_keys, 6U, NULL, 0U, display_key_get_state, display_key_event);
+    ebtn_init_ok = (uint8_t)ebtn_init(
+        s_ebtn_keys,
+        6U,
+        NULL,
+        0U,
+        display_key_get_state,
+        display_key_event);
 
-    if (s_ebtn_init_ok == 0U)
+    if (ebtn_init_ok == 0U)
     {
         taskDISABLE_INTERRUPTS();
 
@@ -138,40 +92,16 @@ static void display_task(void *argument)
         }
     }
     
-    if (display_oled_test_run() == 0)
-    {
-        taskDISABLE_INTERRUPTS();
-
-        for (;;)
-        {
-        }
-    }
-
     for (;;)
     {
         TickType_t now_tick;
 
         now_tick = xTaskGetTickCount();
 
-        if ((now_tick - last_led_tick) >=
-            pdMS_TO_TICKS(500U))
-        {
-            board_led_set(led_no, 0U);
-
-            led_no++;
-
-            if (led_no > 6U)
-            {
-                led_no = 1U;
-            }
-
-            board_led_set(led_no, 1U);
-
-            last_led_tick = now_tick;
-        }
-
         ebtn_process((ebtn_time_t)(now_tick * 1000U / configTICK_RATE_HZ));
 
+        s_display_task_stack_high_water_mark =
+            (uint32_t)uxTaskGetStackHighWaterMark2(NULL);
         s_display_task_heartbeat++;
 
         vTaskDelay(pdMS_TO_TICKS(10U));
@@ -204,4 +134,9 @@ int display_task_create(void)
 uint32_t display_task_get_heartbeat(void)
 {
     return s_display_task_heartbeat;
+}
+
+uint32_t display_task_get_stack_high_water_mark(void)
+{
+    return s_display_task_stack_high_water_mark;
 }

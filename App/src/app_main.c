@@ -15,10 +15,9 @@
 #include "board_oled.h"
 #include "common_flash_layout.h"
 
-volatile uint8_t g_flash_jedec_id[3];
-
 int main(void)
 {
+    app_tasks_status_t task_status;
 
     SCB->VTOR = APP_BASE;
 
@@ -29,6 +28,7 @@ int main(void)
 
     board_led_init();
     board_key_init();
+
     board_usart0_init();
     board_usart1_rs485_init();
 
@@ -66,18 +66,7 @@ int main(void)
         }
     }
 
-    if (board_spi_flash_read_jedec_id(
-            (uint8_t *)g_flash_jedec_id) == 0) {
-        __disable_irq();
-
-        for (;;) {
-        }
-    }
-    app_tasks_status_t task_status;
-    
     task_status = app_tasks_create();
-
-    __enable_irq();
 
     if (task_status != APP_TASKS_STATUS_OK) {
         __disable_irq();
@@ -85,6 +74,8 @@ int main(void)
         for (;;) {
         }
     }
+
+    __enable_irq();
     
     vTaskStartScheduler();
     

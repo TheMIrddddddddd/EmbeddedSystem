@@ -391,6 +391,32 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **M3-2-5 状态:** 已完成当前最小调度骨架的 RAM 基线记录。后续每加入任务、队列、事件组、互斥锁、软件定时器或 DMA/FatFs 缓冲区，必须重新构建并与本基线比较 `Total RW Size`、执行区剩余空间和各对象占用。
 
+### M3-6 SDIO/StorageTask 迁移后 RAM 基线（2026-09-02）
+
+本次加入 StorageTask 的卡识别上下文、5 个 512 字节对齐缓冲区、DMA 任务通知状态和只读诊断接口后，Keil AC5 全量重构建生成的 App map 为：
+
+`MDK/ListingsApp/IndustrialEmbedded-App.map`
+
+| 项目 | 实测值 |
+|---|---:|
+| `Total RW Size`（RW Data + ZI Data） | 21024 B（约 20.53 KB） |
+| RAM 剩余（按 192 KB 执行区估算） | 175584 B（约 171.47 KB） |
+| RAM 使用率（按 192 KB 执行区估算） | 约 10.69% |
+| `Total RO Size` | 28560 B（约 27.89 KB） |
+| `Total ROM Size` | 28636 B（约 27.96 KB） |
+
+该基线只覆盖当前 SDIO/DMA 烟囱测试和 StorageTask 状态机，不包含后续 FatFs 工作区、文件缓存或 M5 持久化请求队列；后续每加入这些对象都要重新比较 map 和任务栈水位。
+
+**M3-6 SDIO/StorageTask 状态（更新于 2026-09-05）:** SDIO 卡识别、普通块读写、DMA 接口、中断事件和 FreeRTOS 任务通知已接入；`app_main.c` 不直接访问 TF 卡，BSP 保持 RTOS 无关。StorageTask 已接入 FatFs 上电挂载和静态文件请求/结果队列，支持 WRITE（覆盖写）与 READ；文件操作由 StorageTask 执行，当前 `diskio.c` 使用普通块读写接口，DMA 保留为已验证的底层能力。
+
+本阶段验证与清理记录：
+
+- 板级证据来自“M3阶段”会话：用户确认电脑端可见 `storage_test.txt` 数据，并提供 MCU 读回 `STORAGE_OK` 的调试截图。此记录表示基础文件读写闭环通过，不代表热插拔或掉电可靠性验收。
+- 2026-09-05 使用 Keil AC5 对 `IndustrialEmbedded_App` 全量重构建通过：0 Error(s)、0 Warning(s)。Code=37236 B、RO-data=60532 B、RW-data=648 B、ZI-data=19712 B，RW+ZI=20360 B；日志为 `MDK/build/verify_storage_stage_20260905.log`。本次提交准备未重新上板测试。
+- ControlTask 的临时文件写入、读取、比较状态机和缓冲区已清理；串口回显、OLED 测试图案等阶段测试逻辑已清理，任务保留基础运行与诊断接口。
+- 各业务任务增加栈水位读取接口，HealthTask 纳入 StorageTask 心跳及栈水位观测。当前看门狗配置为 `FWDGT_PSC_DIV256`、重载值 `4095U`，与前文目标 5s 配置有差异，最终超时及故障复位时序仍需按验收要求核对。
+- 追加写 APPEND、卸载、拔卡重挂载、业务记录滚动、持久化策略及 24h 稳定性验收尚未完成；文件请求中的 buffer 为指针，调用方必须保持缓冲区有效且在请求完成前不修改内容。
+
 ---
 
 ## 七、M4:采集与通信

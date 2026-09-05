@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config;..\Tasks\inc;..\Middleware\Ebtn\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config;..\Tasks\inc;..\Middleware\Ebtn\inc;..\Middleware\FatFs\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -589,6 +589,11 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\board_oled.c</FilePath>
             </File>
+            <File>
+              <FileName>board_sdio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_sdio.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -628,6 +633,36 @@
               <FileName>bit_array.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Middleware\Ebtn\inc\bit_array.h</FilePath>
+            </File>
+            <File>
+              <FileName>diskio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\diskio.c</FilePath>
+            </File>
+            <File>
+              <FileName>ff.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ff.c</FilePath>
+            </File>
+            <File>
+              <FileName>ffconf.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Middleware\FatFs\inc\ffconf.h</FilePath>
+            </File>
+            <File>
+              <FileName>fattime.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\fattime.c</FilePath>
+            </File>
+            <File>
+              <FileName>ffsystem.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ffsystem.c</FilePath>
+            </File>
+            <File>
+              <FileName>ffunicode.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ffunicode.c</FilePath>
             </File>
           </Files>
         </Group>

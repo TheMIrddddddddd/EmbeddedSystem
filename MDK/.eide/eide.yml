@@ -57,6 +57,7 @@ virtualFolder:
         - path: ../BSP/board_key.c
         - path: ../BSP/board_i2c.c
         - path: ../BSP/board_oled.c
+        - path: ../BSP/board_sdio.c
       folders: []
     - name: Middleware
       files:
@@ -67,6 +68,12 @@ virtualFolder:
         - path: ../Middleware/FlashKV/src/flash_kv.c
         - path: ../Middleware/Ebtn/src/ebtn.c
         - path: ../Middleware/Ebtn/inc/bit_array.h
+        - path: ../Middleware/FatFs/src/diskio.c
+        - path: ../Middleware/FatFs/src/ff.c
+        - path: ../Middleware/FatFs/inc/ffconf.h
+        - path: ../Middleware/FatFs/src/fattime.c
+        - path: ../Middleware/FatFs/src/ffsystem.c
+        - path: ../Middleware/FatFs/src/ffunicode.c
       folders: []
     - name: Common
       files:
@@ -327,6 +334,7 @@ targets:
         - ../App/config
         - ../Tasks/inc
         - ../Middleware/Ebtn/inc
+        - ../Middleware/FatFs/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_App
       libList: []
