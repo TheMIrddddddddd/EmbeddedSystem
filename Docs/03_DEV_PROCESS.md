@@ -341,7 +341,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 2. 按《01》十六-1 使用 `xTaskCreateStatic()` 建**七任务空壳**(Protocol/Sample/Storage/Alarm/Control/Display/Health,优先级 5/4/3/3/3/2/5,栈 256/256/512/256/256/256/128 words),每个任务显式提供 `StaticTask_t` 和 `StackType_t[]`;
 3. 按《01》十六-2 使用 `xQueueCreateStatic()`、`xEventGroupCreateStatic()`、`xSemaphoreCreateMutexStatic()` 和 `xTimerCreateStatic()` 建全部队列/事件组/互斥锁/软件定时器(容量照表:8×24B 请求队列等),明确 ISR 到任务的通知路径和共享资源保护;
 4. IWDG(5s)+ HealthTask 喂狗链:全部任务心跳正常才喂狗(《01》十六-4);
-5. **完成 LED1~LED6 软件驱动与应用状态接口:**复用 `BSP/board_config.h` 的 `PD8~PD13`,提供 `board_led_set()` 和状态/累计进度显示接口;不再在 M0 扩展裸机灯效;
+5. **完成 LED1~LED6 软件驱动:**复用 `BSP/board_config.h` 的 `PD8~PD13`,提供 `board_led_set()`;应用状态/累计进度显示接口暂列后续项,待告警或升级状态真正使用时实现;
 6. **完成 KEY1~KEY6 软件链路:**GPIO 输入初始化、低有效读取、定时扫描/消抖、ebtn 事件转换和 FreeRTOS 队列投递;M2 若保留 ebtn 仅做纯 C 核心测试;
 7. **完成 USART 与板级接口适配:**USART0(`PA9/PA10`、H7、板载 CH340/COM4)、USART1(`PA2/PA3`、H6、RS232/RS485)、USART2(`PB10/PB11`、CN1);同时实现 PA1 `485_CS` 的 RS485 收发方向控制。CN2/CN3 只对应 H6 后端的 RS485/RS232 物理接口,不新增独立连接器驱动;
 8. **完成 OLED 驱动链路:**I2C0(`PB8/PB9`,AF4) 原始传输、SSD1306 初始化/刷新和 DisplayTask 单一所有权;
@@ -354,6 +354,69 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 **验收关卡(照搬《01》M3):** 连续 **24h 无看门狗复位、无任务栈溢出**;六路 LED 和六路按键事件可被任务正确处理;USART0/1/2 路由与 PA1 方向控制可收发;OLED 可初始化刷新;GD25Q40E 可读出 JEDEC ID 并完成最小原始读写/擦除;TF 卡可检测、mount、读写和卸载。
 
 **风险点:** 静态任务栈与内核对象 RAM 预算(十六-5)、IdleTask/Timer Service Task 的静态内存回调、喂狗豁免规则(十六-3.1)、DisplayTask 不得直接改业务状态。
+
+### M3-2-5 当前 App RAM 基线（2026-08-26）
+
+本基线来自当前 App 构建生成的 map 文件：
+
+`MDK/build/IndustrialEmbedded_App/IndustrialEmbedded-App.map`
+
+| 项目 | 实测值 |
+|---|---:|
+| RAM 执行区基址 | `0x20000000` |
+| RAM 执行区上限 | `0x30000`（192 KB，196608 B） |
+| `Total RW Size`（RW Data + ZI Data） | 9328 B（约 9.11 KB） |
+| RAM 剩余（按执行区上限估算） | 187280 B（约 182.89 KB） |
+| RAM 使用率（按执行区上限估算） | 约 4.75% |
+| `Total RO Size` | 10588 B（约 10.34 KB） |
+| `Total ROM Size` | 10776 B（约 10.52 KB） |
+
+当前静态任务和内核对象拆分如下：
+
+| 对象/模块 | map 中的占用 |
+|---|---:|
+| TestTask TCB | 104 B |
+| TestTask 栈（256 words） | 1024 B |
+| IdleTask TCB | 104 B |
+| IdleTask 栈（128 words） | 512 B |
+| Timer Service Task TCB | 104 B |
+| Timer Service Task 栈（256 words） | 1024 B |
+| `freertos_static.o` `.bss` 合计 | 1744 B |
+| `queue.o` `.bss` | 128 B |
+| `tasks.o` `.bss` | 240 B |
+| `timers.o` `.bss` | 216 B |
+| 启动栈 `STACK` | 1024 B |
+
+说明：`Total RW Size` 包含初始化数据和零初始化数据，也包含链接器报告的启动栈；上述任务栈水位是运行时“历史最小剩余栈”，不能替代 map 中的静态分配统计。当前 App 未纳入 `heap_1.c`、`heap_2.c`、`heap_4.c` 或 `heap_5.c`，FreeRTOS 采用静态分配策略。
+
+**M3-2-5 状态:** 已完成当前最小调度骨架的 RAM 基线记录。后续每加入任务、队列、事件组、互斥锁、软件定时器或 DMA/FatFs 缓冲区，必须重新构建并与本基线比较 `Total RW Size`、执行区剩余空间和各对象占用。
+
+### M3-6 SDIO/StorageTask 迁移后 RAM 基线（2026-09-02）
+
+本次加入 StorageTask 的卡识别上下文、5 个 512 字节对齐缓冲区、DMA 任务通知状态和只读诊断接口后，Keil AC5 全量重构建生成的 App map 为：
+
+`MDK/ListingsApp/IndustrialEmbedded-App.map`
+
+| 项目 | 实测值 |
+|---|---:|
+| `Total RW Size`（RW Data + ZI Data） | 21024 B（约 20.53 KB） |
+| RAM 剩余（按 192 KB 执行区估算） | 175584 B（约 171.47 KB） |
+| RAM 使用率（按 192 KB 执行区估算） | 约 10.69% |
+| `Total RO Size` | 28560 B（约 27.89 KB） |
+| `Total ROM Size` | 28636 B（约 27.96 KB） |
+
+该基线只覆盖当前 SDIO/DMA 烟囱测试和 StorageTask 状态机，不包含后续 FatFs 工作区、文件缓存或 M5 持久化请求队列；后续每加入这些对象都要重新比较 map 和任务栈水位。
+
+**M3-6 SDIO/StorageTask 状态（更新于 2026-09-05）:** SDIO 卡识别、普通块读写、DMA 接口、中断事件和 FreeRTOS 任务通知已接入；`app_main.c` 不直接访问 TF 卡，BSP 保持 RTOS 无关。StorageTask 已接入 FatFs 上电挂载、卸载、重插检测与重新挂载，以及静态文件请求/结果队列，支持 WRITE（覆盖写）、READ 和 APPEND；文件操作由 StorageTask 执行，当前 `diskio.c` 使用普通块读写接口，DMA 保留为已验证的底层能力。
+
+本阶段验证与清理记录：
+
+- 板级证据来自“M3阶段”会话：用户确认电脑端可见 `storage_test.txt` 数据，并提供 MCU 读回 `STORAGE_OK` 的调试截图；基础文件读写闭环通过。
+- 2026-09-05 使用 Keil AC5 对 `IndustrialEmbedded_App` 重构建通过：0 Error(s)、0 Warning(s)。ControlTask 临时热插拔测试清理后的构建产物为 Code=37256 B、RO-data=60532 B、RW-data=648 B、ZI-data=19712 B，日志为 `MDK/build/verify_append_cleanup_final_20260905.log`。
+- ControlTask 的临时文件写入、读取、比较状态机和缓冲区已清理；串口回显、OLED 测试图案等阶段测试逻辑已清理，任务保留基础运行与诊断接口。
+- 各业务任务增加栈水位读取接口，HealthTask 纳入 StorageTask 心跳及栈水位观测。当前看门狗配置为 `FWDGT_PSC_DIV256`、重载值 `4095U`，这是当前调试配置，后续正式验收时再单独确定超时参数。
+- 用户已完成 `apptest.txt` 的首次创建、末尾追加和复位后保留验证；并完成 `hotplug.txt` 的“写入 → 拔卡卸载 → 重插初始化/挂载 → 读回旧内容 → APPEND”验证，PC 端文件最终为 31 字节、两行内容。APPEND、卸载、重插挂载和热插拔读写闭环已完成。
+- 业务记录滚动、持久化策略和 24h 稳定性验收暂缓；24h 暂缓不作为当前 M3 代码推进的阻塞项。文件请求中的 buffer 为指针，调用方必须保持缓冲区有效且在请求完成前不修改内容。
 
 ---
 

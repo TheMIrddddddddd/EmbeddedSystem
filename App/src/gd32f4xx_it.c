@@ -35,7 +35,7 @@ OF SUCH DAMAGE.
 #include "gd32f4xx_it.h"
 #include "systick.h"
 #include "board_usart.h"
-
+#include "board_sdio.h"
 /*!
     \brief      this function handles NMI exception
     \param[in]  none
@@ -101,18 +101,18 @@ void UsageFault_Handler(void)
     }
 }
 
-/*!
-    \brief      this function handles SVC exception
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void SVC_Handler(void)
-{
-    /* if SVC exception occurs, go to infinite loop */
-    while(1) {
-    }
-}
+// /*!
+//     \brief      this function handles SVC exception
+//     \param[in]  none
+//     \param[out] none
+//     \retval     none
+// */
+// void SVC_Handler(void)
+// {
+//     /* if SVC exception occurs, go to infinite loop */
+//     while(1) {
+//     }
+// }
 
 /*!
     \brief      this function handles DebugMon exception
@@ -127,36 +127,36 @@ void DebugMon_Handler(void)
     }
 }
 
-/*!
-    \brief      this function handles PendSV exception
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void PendSV_Handler(void)
-{
-    /* if PendSV exception occurs, go to infinite loop */
-    while(1) {
-    }
-}
+// /*!
+//     \brief      this function handles PendSV exception
+//     \param[in]  none
+//     \param[out] none
+//     \retval     none
+// */
+// void PendSV_Handler(void)
+// {
+//     /* if PendSV exception occurs, go to infinite loop */
+//     while(1) {
+//     }
+// }
 
-/*!
-    \brief      this function handles SysTick exception
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void SysTick_Handler(void)
-{
-    delay_decrement();
-}
+// /*!
+//     \brief      this function handles SysTick exception
+//     \param[in]  none
+//     \param[out] none
+//     \retval     none
+// */
+// void SysTick_Handler(void)
+// {
+//     delay_decrement();
+// }
 
 void USART0_IRQHandler(void)
 {
     board_usart0_irq_handler();
 }
 
-void DMA1_Channel2_IRQHandler(void)
+void DMA1_Channel5_IRQHandler(void)
 {
     board_usart0_rx_dma_irq_handler();
 }
@@ -169,4 +169,14 @@ void USART1_IRQHandler(void)
 void DMA0_Channel5_IRQHandler(void)
 {
     board_usart1_rs485_rx_dma_irq_handler();
+}
+
+void DMA1_Channel6_IRQHandler(void)
+{
+    board_sdio_dma_irq_handler();
+}
+
+void SDIO_IRQHandler(void)
+{
+    board_sdio_irq_handler();
 }

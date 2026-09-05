@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config;..\Tasks\inc;..\Middleware\Ebtn\inc;..\Middleware\FatFs\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -569,6 +569,31 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\board_usart.c</FilePath>
             </File>
+            <File>
+              <FileName>board_spi_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_spi_flash.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_key.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_key.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_i2c.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_i2c.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_oled.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_oled.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_sdio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_sdio.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -599,6 +624,46 @@
               <FileType>1</FileType>
               <FilePath>..\Middleware\FlashKV\src\flash_kv.c</FilePath>
             </File>
+            <File>
+              <FileName>ebtn.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Ebtn\src\ebtn.c</FilePath>
+            </File>
+            <File>
+              <FileName>bit_array.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Middleware\Ebtn\inc\bit_array.h</FilePath>
+            </File>
+            <File>
+              <FileName>diskio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\diskio.c</FilePath>
+            </File>
+            <File>
+              <FileName>ff.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ff.c</FilePath>
+            </File>
+            <File>
+              <FileName>ffconf.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Middleware\FatFs\inc\ffconf.h</FilePath>
+            </File>
+            <File>
+              <FileName>fattime.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\fattime.c</FilePath>
+            </File>
+            <File>
+              <FileName>ffsystem.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ffsystem.c</FilePath>
+            </File>
+            <File>
+              <FileName>ffunicode.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ffunicode.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -610,11 +675,6 @@
               <FilePath>..\Common\src\common_crc.c</FilePath>
             </File>
             <File>
-              <FileName>systick.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Common\src\systick.c</FilePath>
-            </File>
-            <File>
               <FileName>common_flash_layout.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Common\inc\common_flash_layout.h</FilePath>
@@ -623,6 +683,11 @@
               <FileName>upgrade_serialization.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Common\src\upgrade_serialization.c</FilePath>
+            </File>
+            <File>
+              <FileName>common_reset_contract.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Common\inc\common_reset_contract.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -638,6 +703,126 @@
               <FileName>gd32f4xx_it.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\src\gd32f4xx_it.c</FilePath>
+            </File>
+            <File>
+              <FileName>freertos_static.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\freertos_static.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>FreeRTOS/Kernel</GroupName>
+          <Files>
+            <File>
+              <FileName>event_groups.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\event_groups.c</FilePath>
+            </File>
+            <File>
+              <FileName>list.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\list.c</FilePath>
+            </File>
+            <File>
+              <FileName>queue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\queue.c</FilePath>
+            </File>
+            <File>
+              <FileName>tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\tasks.c</FilePath>
+            </File>
+            <File>
+              <FileName>timers.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\timers.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>FreeRTOS/Portable</GroupName>
+          <Files>
+            <File>
+              <FileName>port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F\port.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>App/config</GroupName>
+          <Files>
+            <File>
+              <FileName>FreeRTOSConfig.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\App\config\FreeRTOSConfig.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Tasks</GroupName>
+          <Files>
+            <File>
+              <FileName>protocol_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\protocol_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>alarm_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\alarm_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>control_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\control_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>display_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\display_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>health_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\health_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>sample_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\sample_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>storage_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\storage_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\app_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>task_queues.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\task_queues.c</FilePath>
+            </File>
+            <File>
+              <FileName>task_events.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\task_events.c</FilePath>
+            </File>
+            <File>
+              <FileName>task_mutex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\task_mutex.c</FilePath>
+            </File>
+            <File>
+              <FileName>task_timer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\task_timer.c</FilePath>
             </File>
           </Files>
         </Group>
