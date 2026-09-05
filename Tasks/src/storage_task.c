@@ -21,8 +21,10 @@
 #define STORAGE_SDIO_NOTIFY_DMA_ERROR      (1UL << 4)
 #define STORAGE_SDIO_NOTIFY_SDIO_ERROR     (1UL << 5)
 
-#define STORAGE_TASK_REQUEST_QUEUE_LENGTH         4U
-#define STORAGE_TASK_RESULT_QUEUE_LENGTH         4U
+#define STORAGE_TASK_REQUEST_QUEUE_LENGTH   4U
+#define STORAGE_TASK_RESULT_QUEUE_LENGTH    4U
+
+#define STORAGE_CARD_INSERT_DEBOUNCE_MS     100U
 
 static StaticTask_t s_storage_task_tcb;
 static StackType_t  s_storage_task_stack[STORAGE_TASK_STACK_DEPTH];
@@ -55,6 +57,12 @@ static QueueHandle_t s_storage_file_result_queue_handle;
 static FATFS s_storage_fatfs;
 static volatile FRESULT s_storage_fatfs_mount_result = FR_NOT_READY;
 static volatile uint8_t s_storage_fatfs_mounted;
+static volatile FRESULT s_storage_fatfs_unmount_result = FR_OK;
+
+static TickType_t s_storage_card_insert_tick;
+static uint8_t s_storage_card_insert_pending;
+static uint8_t s_storage_card_insert_attempted;
+
 static storage_task_sdio_diag_t s_storage_task_sdio_diag;
 
 static volatile uint32_t s_storage_task_dma_irq_events;
@@ -99,14 +107,87 @@ static void storage_fatfs_mount(void)
     {
         return;
     }
-    
+
     s_storage_fatfs_mount_result = f_mount(&s_storage_fatfs, "0:", 1U);
 
     if (s_storage_fatfs_mount_result == FR_OK)
     {
         s_storage_fatfs_mounted = 1U;
     }
+
+}
+
+static void storage_card_remove_process(void)
+{
+    if (board_sdio_card_present() != 0U)
+    {
+        return;
+    }
+
+    /* 无卡状态已处理，避免每轮重复卸载。 */
+    if ((s_storage_task_sdio_diag.state == STORAGE_TASK_SDIO_STATE_NO_CARD) && (s_storage_fatfs_mounted == 0U))
+    {
+        return;
+    }
+
+    /* 先关闭文件访问入口，再清除底层就绪状态。 */
+    s_storage_fatfs_mounted = 0U;
+    s_storage_fatfs_mount_result = FR_NOT_READY;
+
+    diskio_sdio_set_not_ready();
+
+    /* 注销逻辑盘的文件系统对象。 */
+    s_storage_fatfs_unmount_result = f_mount(NULL, "0:", 0U);
+
+    s_storage_task_sdio_diag.state = STORAGE_TASK_SDIO_STATE_NO_CARD;
+    s_storage_task_sdio_diag.last_status = (uint32_t)BOARD_SDIO_STATUS_NO_CARD;
+    s_storage_task_sdio_diag.busy = 0U;
+}
+
+static void storage_card_insert_process(void)
+{
+    TickType_t now_tick;
+
+    /* 无卡时，允许下一次插卡重新尝试。 */
+    if (board_sdio_card_present() == 0U)
+    {
+        s_storage_card_insert_pending = 0U;
+        s_storage_card_insert_attempted = 0U;
+        return;
+    }
+
+    /* 已挂载，或本次插卡已经尝试过，不重复初始化。 */
+    if ((s_storage_fatfs_mounted != 0U) || (s_storage_card_insert_attempted != 0U))
+    {
+        return;
+    }
+
+    now_tick = xTaskGetTickCount();
+
+    if (s_storage_card_insert_pending == 0U)
+    {
+        s_storage_card_insert_tick = now_tick;
+        s_storage_card_insert_pending = 1U;
+        return;
+    }
     
+    if ((TickType_t)(now_tick - s_storage_card_insert_tick) < pdMS_TO_TICKS(STORAGE_CARD_INSERT_DEBOUNCE_MS))
+    {
+        return;
+    }
+
+    s_storage_card_insert_pending = 0U;
+    s_storage_card_insert_attempted = 1U;
+
+    /* 重新识别卡，并更新 diskio 的 RCA 和就绪状态。 */
+    storage_sdio_initialize();
+
+    /* 初始化失败时，保留 BSP 状态，等待下一次拔插。 */
+    if (s_storage_task_sdio_diag.state != STORAGE_TASK_SDIO_STATE_READY)
+    {
+        return;
+    }
+    storage_fatfs_mount();
 }
 
 static void storage_task_sdio_irq_callback(uint32_t dma_events, uint32_t sdio_events)
@@ -309,6 +390,7 @@ static void storage_task_process_file_request(void)
     FRESULT result;
     FRESULT close_result;
     UINT transferred;
+    BYTE open_mode;
 
     if (s_storage_file_request_queue_handle == NULL)
     {
@@ -331,7 +413,17 @@ static void storage_task_process_file_request(void)
     switch (request.operation)
     {
     case STORAGE_TASK_FILE_WRITE:
-        result = f_open(&file, request.path, FA_CREATE_ALWAYS | FA_WRITE);
+    case STORAGE_TASK_FILE_APPEND:
+        if (request.operation == STORAGE_TASK_FILE_APPEND)
+        {
+            open_mode = FA_OPEN_APPEND | FA_WRITE;
+        }
+        else
+        {
+            open_mode = FA_CREATE_ALWAYS | FA_WRITE;
+        }
+
+        result = f_open(&file, request.path, open_mode);
 
         if (result != FR_OK)
         {
@@ -396,6 +488,9 @@ static void storage_task(void *argument)
     storage_sdio_initialize();
     storage_fatfs_mount();
 
+    s_storage_card_insert_attempted =
+        (board_sdio_card_present() != 0U) ? 1U : 0U;
+
     for (;;)
     {
         notification_value = 0U;
@@ -411,6 +506,9 @@ static void storage_task(void *argument)
             s_storage_task_sdio_diag.notification_events |=
                 notification_value;
         }
+
+        storage_card_remove_process();
+        storage_card_insert_process();
 
         storage_task_process_request();
         storage_task_process_file_request();
@@ -513,7 +611,9 @@ int storage_task_file_request_submit(const storage_task_file_request_t *request)
         return 0;
     }
     
-    if ((request->operation != STORAGE_TASK_FILE_WRITE) && (request->operation != STORAGE_TASK_FILE_READ))
+    if ((request->operation != STORAGE_TASK_FILE_WRITE) &&
+        (request->operation != STORAGE_TASK_FILE_READ)  &&
+        (request->operation != STORAGE_TASK_FILE_APPEND))
     {
         return 0;
     }

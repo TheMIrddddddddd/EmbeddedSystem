@@ -25,7 +25,8 @@ typedef enum
 typedef enum
 {
     STORAGE_TASK_FILE_WRITE = 0,
-    STORAGE_TASK_FILE_READ
+    STORAGE_TASK_FILE_READ,
+    STORAGE_TASK_FILE_APPEND
 } storage_task_file_operation_t;
 
 typedef struct
