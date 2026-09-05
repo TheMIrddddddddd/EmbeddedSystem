@@ -13,6 +13,7 @@
 #include "board_usart.h"
 #include "board_i2c.h"
 #include "board_oled.h"
+#include "board_adc.h"
 #include "common_flash_layout.h"
 
 int main(void)
@@ -58,6 +59,15 @@ int main(void)
     }
 
     if (board_spi_flash_reset() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+
+    if (board_adc_init() == 0)
     {
         __disable_irq();
 

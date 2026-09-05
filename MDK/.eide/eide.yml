@@ -58,6 +58,8 @@ virtualFolder:
         - path: ../BSP/board_i2c.c
         - path: ../BSP/board_oled.c
         - path: ../BSP/board_sdio.c
+        - path: ../BSP/board_dma_map.h
+        - path: ../BSP/board_adc.c
       folders: []
     - name: Middleware
       files:
