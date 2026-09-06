@@ -3,6 +3,7 @@
 
 #include "board_usart.h"
 #include "board_config.h"
+#include "board_dma_map.h"
 #include "gd32f4xx_rcu.h"
 #include "gd32f4xx_gpio.h"
 #include "gd32f4xx_usart.h"
@@ -18,14 +19,8 @@
 #define BOARD_USART1_RS485_TX_RINGBUFFER_SIZE     512U
 
 #define BOARD_USART0_RX_DMA_BUFFER_SIZE     512U
-#define BOARD_USART0_RX_DMA_PERIPH          DMA1
-#define BOARD_USART0_RX_DMA_CHANNEL         DMA_CH5
-#define BOARD_USART0_RX_DMA_SUBPERIPH       DMA_SUBPERI4
 
 #define BOARD_USART1_RS485_RX_DMA_BUFFER_SIZE     512U
-#define BOARD_USART1_RS485_RX_DMA_PERIPH          DMA0
-#define BOARD_USART1_RS485_RX_DMA_CHANNEL         DMA_CH5
-#define BOARD_USART1_RS485_RX_DMA_SUBPERIPH       DMA_SUBPERI4
 
 
 static struct rt_ringbuffer s_usart0_rx_ringbuffer;
@@ -103,7 +98,7 @@ static void board_usart0_rx_dma_init(void)
     dma_init_struct.priority = DMA_PRIORITY_HIGH;
 
     dma_single_data_mode_init(BOARD_USART0_RX_DMA_PERIPH, BOARD_USART0_RX_DMA_CHANNEL, &dma_init_struct);
-    dma_channel_subperipheral_select(BOARD_USART0_RX_DMA_PERIPH, BOARD_USART0_RX_DMA_CHANNEL, BOARD_USART0_RX_DMA_SUBPERIPH);
+    dma_channel_subperipheral_select(BOARD_USART0_RX_DMA_PERIPH, BOARD_USART0_RX_DMA_CHANNEL, BOARD_USART0_RX_DMA_SUBPERI);
     dma_interrupt_enable(BOARD_USART0_RX_DMA_PERIPH, BOARD_USART0_RX_DMA_CHANNEL, DMA_INT_HTF | DMA_INT_FTF);
     dma_interrupt_enable(BOARD_USART0_RX_DMA_PERIPH, BOARD_USART0_RX_DMA_CHANNEL, DMA_INT_SDE | DMA_INT_TAE);
     dma_interrupt_enable(BOARD_USART0_RX_DMA_PERIPH, BOARD_USART0_RX_DMA_CHANNEL, DMA_INT_FEE);
@@ -143,7 +138,7 @@ void board_usart0_init(void)
     board_usart0_rx_dma_init();
 
     nvic_irq_enable(USART0_IRQn, 6U, 0U);
-    nvic_irq_enable(DMA1_Channel5_IRQn, 7U, 0U);
+    nvic_irq_enable(BOARD_USART0_RX_DMA_IRQn, 7U, 0U);
     usart_interrupt_disable(USART0, USART_INT_RBNE);
     usart_interrupt_enable(USART0, USART_INT_IDLE);
 }
@@ -168,7 +163,7 @@ static void board_usart1_rs485_rx_dma_init(void)
     dma_init_struct.priority = DMA_PRIORITY_HIGH;
 
     dma_single_data_mode_init(BOARD_USART1_RS485_RX_DMA_PERIPH, BOARD_USART1_RS485_RX_DMA_CHANNEL, &dma_init_struct);
-    dma_channel_subperipheral_select(BOARD_USART1_RS485_RX_DMA_PERIPH, BOARD_USART1_RS485_RX_DMA_CHANNEL, BOARD_USART1_RS485_RX_DMA_SUBPERIPH);
+    dma_channel_subperipheral_select(BOARD_USART1_RS485_RX_DMA_PERIPH, BOARD_USART1_RS485_RX_DMA_CHANNEL, BOARD_USART1_RS485_RX_DMA_SUBPERI);
     dma_interrupt_enable(BOARD_USART1_RS485_RX_DMA_PERIPH, BOARD_USART1_RS485_RX_DMA_CHANNEL, DMA_INT_HTF | DMA_INT_FTF);
     dma_interrupt_enable(BOARD_USART1_RS485_RX_DMA_PERIPH, BOARD_USART1_RS485_RX_DMA_CHANNEL, DMA_INT_SDE | DMA_INT_TAE);
     dma_interrupt_enable(BOARD_USART1_RS485_RX_DMA_PERIPH, BOARD_USART1_RS485_RX_DMA_CHANNEL, DMA_INT_FEE);
@@ -176,7 +171,7 @@ static void board_usart1_rs485_rx_dma_init(void)
     usart_dma_receive_config(USART1, USART_RECEIVE_DMA_ENABLE);
 
     nvic_irq_enable(USART1_IRQn, 6U, 0U);
-    nvic_irq_enable(DMA0_Channel5_IRQn, 7U, 0U);
+    nvic_irq_enable(BOARD_USART1_RS485_RX_DMA_IRQn, 7U, 0U);
     usart_interrupt_disable(USART1, USART_INT_RBNE);
     usart_interrupt_enable(USART1, USART_INT_IDLE);
 }
@@ -373,6 +368,11 @@ uint32_t board_usart0_rx_overflow_count_get(void)
 uint32_t board_usart0_tx_drop_count_get(void)
 {
     return s_usart0_tx_drop_count;
+}
+
+uint16_t board_usart0_tx_free_get(void)
+{
+    return (uint16_t)rt_ringbuffer_space_len(&s_usart0_tx_ringbuffer);
 }
 
 uint32_t board_usart0_rx_dma_error_count_get(void)

@@ -1,25 +1,366 @@
 #include "control_task.h"
 #include "FreeRTOS.h"
 #include "task.h"
+
 #include "task_queues.h"
+#include "app_cli.h"
+#include "app_config.h"
+#include "sample_task.h"
+#include "board_usart.h"
+#include "board_gpio.h"
+#include "cli.h"
+#include "ebtn.h"
 
 #define CONTROL_TASK_PRIORITY          3U
 #define CONTROL_TASK_STACK_DEPTH       256U
 
+/* 《01》四-4：超限指示灯 LED3 */
+#define CONTROL_LED_OVER_LIMIT         3U
+
+#define CLI_ECHO_ENABLE                1U
+
+#define CLI_CHAR_BACKSPACE             0x08U
+#define CLI_CHAR_TAB                   0x09U
+#define CLI_CHAR_CR                    0x0DU
+#define CLI_CHAR_LF                    0x0AU
+#define CLI_CHAR_SPACE                 0x20U
+#define CLI_CHAR_TILDE                 0x7EU
+#define CLI_CHAR_DELETE                0x7FU
+
+#define SAMPLE_LINE_BUFFER_SIZE        128U
+
 static StaticTask_t s_control_task_tcb;
 static StackType_t  s_control_task_stack[CONTROL_TASK_STACK_DEPTH];
+
 static volatile uint32_t s_control_task_heartbeat;
 static volatile uint32_t s_control_task_stack_high_water_mark;
+
+/*
+ * 行缓冲放静态区而不放栈上：129B 加上 cli_execute_line 内部
+ * 自己的 line_copy 和 argv，栈占用会翻倍，ControlTask 只有 1KB。
+ */
+static char     s_cli_line_buffer[CLI_MAX_LINE_LENGTH + 1U];
+static uint16_t s_cli_line_length;
+static uint8_t  s_cli_line_overflow;
+static uint8_t  s_cli_swallow_next_lf;
+
+static char s_sample_line_buffer[SAMPLE_LINE_BUFFER_SIZE];
+
+static void cli_line_terminate(void)
+{
+#if (CLI_ECHO_ENABLE != 0U)
+    (void)app_cli_write("\r\n", 2U);
+#endif
+
+    if (s_cli_line_overflow != 0U)
+    {
+        (void)app_cli_print("line too long, discarded");
+    }
+    else if (s_cli_line_length > 0U)
+    {
+        s_cli_line_buffer[s_cli_line_length] = '\0';
+
+        app_cli_execute_line(s_cli_line_buffer);
+    }
+    else
+    {
+        /* 空行不执行命令 */
+    }
+
+    s_cli_line_length = 0U;
+    s_cli_line_overflow = 0U;
+}
+
+static void cli_line_process_byte(uint8_t byte)
+{
+    if (byte == CLI_CHAR_CR)
+    {
+        s_cli_swallow_next_lf = 1U;
+
+        cli_line_terminate();
+
+        return;
+    }
+
+    if (byte == CLI_CHAR_LF)
+    {
+        if (s_cli_swallow_next_lf != 0U)
+        {
+            /* CRLF 的后半，吞掉避免产生第二个空行 */
+            s_cli_swallow_next_lf = 0U;
+
+            return;
+        }
+
+        cli_line_terminate();
+
+        return;
+    }
+
+    /* CRLF 序列被其他字节打断，作废 */
+    s_cli_swallow_next_lf = 0U;
+
+    if ((byte == CLI_CHAR_BACKSPACE) || (byte == CLI_CHAR_DELETE))
+    {
+        if (s_cli_line_length > 0U)
+        {
+            s_cli_line_length--;
+
+#if (CLI_ECHO_ENABLE != 0U)
+            (void)app_cli_write("\b \b", 3U);
+#endif
+        }
+
+        return;
+    }
+
+    if ((byte == CLI_CHAR_TAB) ||
+        ((byte >= CLI_CHAR_SPACE) && (byte <= CLI_CHAR_TILDE)))
+    {
+#if (CLI_ECHO_ENABLE != 0U)
+        (void)app_cli_write((const char *)&byte, 1U);
+#endif
+        if (s_cli_line_length >= CLI_MAX_LINE_LENGTH)
+        {
+            /* 继续收完这一行但不再存储，终止时整行报错丢弃 */
+            s_cli_line_overflow = 1U;
+        }
+        else
+        {
+            s_cli_line_buffer[s_cli_line_length] = (char)byte;
+            s_cli_line_length++;
+        }
+
+        return;
+    }
+
+    /* 其余控制字节忽略 */
+}
+
+/*
+ * 无符号整数转十进制，width 为最小位数，不足高位补零；
+ * width 传 0 表示不补零。返回写入字符数。
+ */
+static uint16_t control_u32_to_dec(char *dst, uint32_t value, uint8_t width)
+{
+    char tmp[10];
+    uint16_t count = 0U;
+    uint16_t pos = 0U;
+    uint8_t pad;
+
+    do
+    {
+        tmp[count] = (char)('0' + (value % 10U));
+        count++;
+        value /= 10U;
+    } while (value != 0U);
+
+    for (pad = (uint8_t)count; pad < width; pad++)
+    {
+        dst[pos] = '0';
+        pos++;
+    }
+
+    while (count > 0U)
+    {
+        count--;
+        dst[pos] = tmp[count];
+        pos++;
+    }
+
+    return pos;
+}
+
+/* 定点两位小数：1.65 -> "1.65"。不用 snprintf，避免拉入浮点格式化 */
+static uint16_t control_append_fixed2(char *dst, uint16_t pos, float value)
+{
+    uint32_t cents;
+
+    if (value < 0.0f)
+    {
+        value = 0.0f;
+    }
+
+    cents = (uint32_t)((value * 100.0f) + 0.5f);
+
+    pos += control_u32_to_dec(&dst[pos], cents / 100U, 0U);
+    dst[pos] = '.';
+    pos++;
+    pos += control_u32_to_dec(&dst[pos], cents % 100U, 2U);
+
+    return pos;
+}
+
+static uint16_t control_append_hex16(char *dst, uint16_t pos, uint16_t value)
+{
+    static const char hex_chars[] = "0123456789ABCDEF";
+
+    dst[pos] = hex_chars[(value >> 12) & 0x0FU];
+    dst[pos + 1U] = hex_chars[(value >> 8) & 0x0FU];
+    dst[pos + 2U] = hex_chars[(value >> 4) & 0x0FU];
+    dst[pos + 3U] = hex_chars[value & 0x0FU];
+
+    return (uint16_t)(pos + 4U);
+}
+
+static uint16_t control_append_voltage(char *dst, uint16_t pos,
+                                       const char *name, float value)
+{
+    while (*name != '\0')
+    {
+        dst[pos] = *name;
+        pos++;
+        name++;
+    }
+
+    pos = control_append_fixed2(dst, pos, value);
+
+    dst[pos] = 'V';
+    pos++;
+
+    return pos;
+}
+
+/*
+ * 正常格式（《01》四-1，时间戳 M4-3d 换 RTC）:
+ *   t=000012  CH0=1.25V  CH1=3.30V[  [OverLimit] ch0>2.50]
+ * 隐藏格式（《01》五，时间 4B + 每通道 4B，超限尾缀 *）:
+ *   0000006E000C8000001A6666*
+ */
+static void control_print_sample_line(const app_config_t *config)
+{
+    sample_snapshot_t snapshot;
+    TickType_t now_ticks = xTaskGetTickCount();
+    uint32_t uptime_s = (uint32_t)(now_ticks / (TickType_t)configTICK_RATE_HZ);
+    uint16_t pos = 0U;
+    uint8_t ch0_over;
+    uint8_t ch1_over;
+
+    if (sample_task_snapshot_get(&snapshot) == 0)
+    {
+        return;
+    }
+
+    ch0_over = (snapshot.value_ch0 > config->limit[0]) ? 1U : 0U;
+    ch1_over = (snapshot.value_ch1 > config->limit[1]) ? 1U : 0U;
+
+    if (config->hide_mode == 0U)
+    {
+        pos += control_u32_to_dec(&s_sample_line_buffer[pos], uptime_s, 0U);
+        s_sample_line_buffer[pos] = ' ';
+        pos++;
+
+        pos = control_append_voltage(s_sample_line_buffer, pos, "CH0=", snapshot.value_ch0);
+        s_sample_line_buffer[pos] = ' ';
+        pos++;
+        pos = control_append_voltage(s_sample_line_buffer, pos, "CH1=", snapshot.value_ch1);
+
+        if ((ch0_over != 0U) || (ch1_over != 0U))
+        {
+            (void)strcpy(&s_sample_line_buffer[pos], "  [OverLimit]");
+            pos += 13U;
+
+            if (ch0_over != 0U)
+            {
+                (void)strcpy(&s_sample_line_buffer[pos], " ch0>");
+                pos += 5U;
+                pos = control_append_fixed2(s_sample_line_buffer, pos, config->limit[0]);
+            }
+
+            if (ch1_over != 0U)
+            {
+                (void)strcpy(&s_sample_line_buffer[pos], " ch1>");
+                pos += 5U;
+                pos = control_append_fixed2(s_sample_line_buffer, pos, config->limit[1]);
+            }
+        }
+    }
+    else
+    {
+        /* value*65536 的高 16 位即整数部分、低 16 位即小数（《01》五） */
+        uint32_t ch0_scaled = (uint32_t)((snapshot.value_ch0 * 65536.0f) + 0.5f);
+        uint32_t ch1_scaled = (uint32_t)((snapshot.value_ch1 * 65536.0f) + 0.5f);
+
+        pos = control_append_hex16(s_sample_line_buffer, pos,
+                                   (uint16_t)(uptime_s >> 16));
+        pos = control_append_hex16(s_sample_line_buffer, pos,
+                                   (uint16_t)(uptime_s & 0xFFFFU));
+        pos = control_append_hex16(s_sample_line_buffer, pos,
+                                   (uint16_t)(ch0_scaled >> 16));
+        pos = control_append_hex16(s_sample_line_buffer, pos,
+                                   (uint16_t)(ch0_scaled & 0xFFFFU));
+        pos = control_append_hex16(s_sample_line_buffer, pos,
+                                   (uint16_t)(ch1_scaled >> 16));
+        pos = control_append_hex16(s_sample_line_buffer, pos,
+                                   (uint16_t)(ch1_scaled & 0xFFFFU));
+
+        if ((ch0_over != 0U) || (ch1_over != 0U))
+        {
+            s_sample_line_buffer[pos] = '*';
+            pos++;
+        }
+    }
+
+    board_led_set(CONTROL_LED_OVER_LIMIT,
+                  (uint8_t)(((ch0_over != 0U) || (ch1_over != 0U)) ? 1U : 0U));
+
+    s_sample_line_buffer[pos] = '\r';
+    s_sample_line_buffer[pos + 1U] = '\n';
+
+    (void)app_cli_write(s_sample_line_buffer, (uint16_t)(pos + 2U));
+}
 
 static void control_task(void *argument)
 {
     key_event_t key_event;
+    app_config_t config;
+    uint8_t sample_was_enabled = 0U;
+    TickType_t last_print_tick = 0U;
+    uint8_t byte;
+
     (void)argument;
+
+    app_cli_banner_print();
 
     for(;;)
     {
+        while (board_usart0_try_receive_byte(&byte) != 0U)
+        {
+            cli_line_process_byte(byte);
+        }
+
+        (void)app_config_get(&config);
+
+        if (config.local_sample_enabled != 0U)
+        {
+            TickType_t now = xTaskGetTickCount();
+            TickType_t period_ticks =
+                (TickType_t)config.sample_period_s * (TickType_t)configTICK_RATE_HZ;
+
+            if ((sample_was_enabled == 0U) ||
+                ((now - last_print_tick) >= period_ticks))
+            {
+                control_print_sample_line(&config);
+                last_print_tick = now;
+            }
+        }
+        else if (sample_was_enabled != 0U)
+        {
+            /* 停止采样时熄灭超限灯 */
+            board_led_set(CONTROL_LED_OVER_LIMIT, 0U);
+        }
+
+        sample_was_enabled = config.local_sample_enabled;
+
         if (key_event_receive(&key_event, 0U) == pdTRUE)
         {
+            /* 《01》四-2：KEY1 按下翻转采样 */
+            if ((key_event.key_id == 1U) &&
+                (key_event.event == (uint8_t)EBTN_EVT_ONPRESS))
+            {
+                (void)app_config_sample_enable_set(
+                    (config.local_sample_enabled != 0U) ? 0U : 1U);
+            }
         }
 
         s_control_task_stack_high_water_mark = (uint32_t)uxTaskGetStackHighWaterMark2(NULL);
@@ -47,7 +388,7 @@ int control_task_create(void)
     {
         return 0;
     }
-    
+
     return 1;
 }
 

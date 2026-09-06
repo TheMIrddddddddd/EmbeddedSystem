@@ -27,4 +27,7 @@ void board_adc_irq_callback_register(board_adc_irq_callback_t callback);
 uint32_t board_adc_dma_event_count_get(void);
 uint32_t board_adc_dma_error_count_get(void);
 
+#define BOARD_ADC_RESOLUTION_BITS   12U
+#define BOARD_ADC_FULL_SCALE_CODE   ((1U << BOARD_ADC_RESOLUTION_BITS) - 1U)
+
 #endif /* BOARD_ADC_H */

@@ -6,6 +6,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app_task.h"
+#include "app_config.h"
 
 #include "board_gpio.h"
 #include "board_key.h"
@@ -94,6 +95,16 @@ int main(void)
         {
         }
     }
+
+    if (app_config_init() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+
     task_status = app_tasks_create();
 
     if (task_status != APP_TASKS_STATUS_OK) {

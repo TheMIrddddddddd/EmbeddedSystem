@@ -19,6 +19,7 @@ void board_usart1_rs485_rx_dma_irq_handler(void);
 uint32_t board_usart0_rx_overflow_count_get(void);
 uint32_t board_usart0_tx_drop_count_get(void);
 uint32_t board_usart0_rx_dma_error_count_get(void);
+uint16_t board_usart0_tx_free_get(void);
 
 void board_usart1_rs485_init(void);
 

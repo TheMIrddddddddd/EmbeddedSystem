@@ -93,6 +93,8 @@ virtualFolder:
             - path: ../App/src/app_main.c
             - path: ../App/src/gd32f4xx_it.c
             - path: ../App/src/freertos_static.c
+            - path: ../App/src/app_config.c
+            - path: ../App/src/app_cli.c
           folders: []
         - name: config
           files:
@@ -324,7 +326,7 @@ targets:
         - ../Driver/CMSIS/GD/GD32F4xx/Include
         - ../Driver/CMSIS
         - ../Libraries/Include
-        - ../App
+        - ../App/inc
         - ../BSP
         - ../Middleware
         - ../Common/inc

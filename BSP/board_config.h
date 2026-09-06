@@ -105,4 +105,7 @@
 
 #define BOARD_DAC0_OUT0_PORT     GPIOA
 #define BOARD_DAC0_OUT0_PIN      GPIO_PIN_4
+
+#define BOARD_ADC_VREF_MV        3300U
+
 #endif /* BOARD_CONFIG_H */
