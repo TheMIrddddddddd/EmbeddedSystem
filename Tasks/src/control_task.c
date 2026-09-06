@@ -8,6 +8,7 @@
 #include "sample_task.h"
 #include "board_usart.h"
 #include "board_gpio.h"
+#include "board_rtc.h"
 #include "cli.h"
 #include "ebtn.h"
 
@@ -137,72 +138,6 @@ static void cli_line_process_byte(uint8_t byte)
     /* 其余控制字节忽略 */
 }
 
-/*
- * 无符号整数转十进制，width 为最小位数，不足高位补零；
- * width 传 0 表示不补零。返回写入字符数。
- */
-static uint16_t control_u32_to_dec(char *dst, uint32_t value, uint8_t width)
-{
-    char tmp[10];
-    uint16_t count = 0U;
-    uint16_t pos = 0U;
-    uint8_t pad;
-
-    do
-    {
-        tmp[count] = (char)('0' + (value % 10U));
-        count++;
-        value /= 10U;
-    } while (value != 0U);
-
-    for (pad = (uint8_t)count; pad < width; pad++)
-    {
-        dst[pos] = '0';
-        pos++;
-    }
-
-    while (count > 0U)
-    {
-        count--;
-        dst[pos] = tmp[count];
-        pos++;
-    }
-
-    return pos;
-}
-
-/* 定点两位小数：1.65 -> "1.65"。不用 snprintf，避免拉入浮点格式化 */
-static uint16_t control_append_fixed2(char *dst, uint16_t pos, float value)
-{
-    uint32_t cents;
-
-    if (value < 0.0f)
-    {
-        value = 0.0f;
-    }
-
-    cents = (uint32_t)((value * 100.0f) + 0.5f);
-
-    pos += control_u32_to_dec(&dst[pos], cents / 100U, 0U);
-    dst[pos] = '.';
-    pos++;
-    pos += control_u32_to_dec(&dst[pos], cents % 100U, 2U);
-
-    return pos;
-}
-
-static uint16_t control_append_hex16(char *dst, uint16_t pos, uint16_t value)
-{
-    static const char hex_chars[] = "0123456789ABCDEF";
-
-    dst[pos] = hex_chars[(value >> 12) & 0x0FU];
-    dst[pos + 1U] = hex_chars[(value >> 8) & 0x0FU];
-    dst[pos + 2U] = hex_chars[(value >> 4) & 0x0FU];
-    dst[pos + 3U] = hex_chars[value & 0x0FU];
-
-    return (uint16_t)(pos + 4U);
-}
-
 static uint16_t control_append_voltage(char *dst, uint16_t pos,
                                        const char *name, float value)
 {
@@ -213,7 +148,7 @@ static uint16_t control_append_voltage(char *dst, uint16_t pos,
         name++;
     }
 
-    pos = control_append_fixed2(dst, pos, value);
+    pos = app_cli_append_fixed2(dst, pos, value);
 
     dst[pos] = 'V';
     pos++;
@@ -230,15 +165,25 @@ static uint16_t control_append_voltage(char *dst, uint16_t pos,
 static void control_print_sample_line(const app_config_t *config)
 {
     sample_snapshot_t snapshot;
+    board_rtc_time_t rtc_time;
     TickType_t now_ticks = xTaskGetTickCount();
     uint32_t uptime_s = (uint32_t)(now_ticks / (TickType_t)configTICK_RATE_HZ);
+    uint32_t timestamp = uptime_s;
     uint16_t pos = 0U;
     uint8_t ch0_over;
     uint8_t ch1_over;
+    uint8_t rtc_ok;
 
     if (sample_task_snapshot_get(&snapshot) == 0)
     {
         return;
+    }
+
+    rtc_ok = board_rtc_time_get(&rtc_time);
+
+    if (rtc_ok != 0U)
+    {
+        timestamp = app_cli_time_to_unix(&rtc_time);
     }
 
     ch0_over = (snapshot.value_ch0 > config->limit[0]) ? 1U : 0U;
@@ -246,7 +191,18 @@ static void control_print_sample_line(const app_config_t *config)
 
     if (config->hide_mode == 0U)
     {
-        pos += control_u32_to_dec(&s_sample_line_buffer[pos], uptime_s, 0U);
+        if (rtc_ok != 0U)
+        {
+            pos = app_cli_append_time(s_sample_line_buffer, pos, &rtc_time);
+        }
+        else
+        {
+            pos += app_cli_u32_to_dec(&s_sample_line_buffer[pos], uptime_s, 0U);
+        }
+
+        /* 文档格式时间戳后两个空格："2026-08-09 12:30:45  CH0=1.25V" */
+        s_sample_line_buffer[pos] = ' ';
+        pos++;
         s_sample_line_buffer[pos] = ' ';
         pos++;
 
@@ -264,14 +220,14 @@ static void control_print_sample_line(const app_config_t *config)
             {
                 (void)strcpy(&s_sample_line_buffer[pos], " ch0>");
                 pos += 5U;
-                pos = control_append_fixed2(s_sample_line_buffer, pos, config->limit[0]);
+                pos = app_cli_append_fixed2(s_sample_line_buffer, pos, config->limit[0]);
             }
 
             if (ch1_over != 0U)
             {
                 (void)strcpy(&s_sample_line_buffer[pos], " ch1>");
                 pos += 5U;
-                pos = control_append_fixed2(s_sample_line_buffer, pos, config->limit[1]);
+                pos = app_cli_append_fixed2(s_sample_line_buffer, pos, config->limit[1]);
             }
         }
     }
@@ -281,17 +237,17 @@ static void control_print_sample_line(const app_config_t *config)
         uint32_t ch0_scaled = (uint32_t)((snapshot.value_ch0 * 65536.0f) + 0.5f);
         uint32_t ch1_scaled = (uint32_t)((snapshot.value_ch1 * 65536.0f) + 0.5f);
 
-        pos = control_append_hex16(s_sample_line_buffer, pos,
-                                   (uint16_t)(uptime_s >> 16));
-        pos = control_append_hex16(s_sample_line_buffer, pos,
-                                   (uint16_t)(uptime_s & 0xFFFFU));
-        pos = control_append_hex16(s_sample_line_buffer, pos,
+        pos = app_cli_append_hex16(s_sample_line_buffer, pos,
+                                   (uint16_t)(timestamp >> 16));
+        pos = app_cli_append_hex16(s_sample_line_buffer, pos,
+                                   (uint16_t)(timestamp & 0xFFFFU));
+        pos = app_cli_append_hex16(s_sample_line_buffer, pos,
                                    (uint16_t)(ch0_scaled >> 16));
-        pos = control_append_hex16(s_sample_line_buffer, pos,
+        pos = app_cli_append_hex16(s_sample_line_buffer, pos,
                                    (uint16_t)(ch0_scaled & 0xFFFFU));
-        pos = control_append_hex16(s_sample_line_buffer, pos,
+        pos = app_cli_append_hex16(s_sample_line_buffer, pos,
                                    (uint16_t)(ch1_scaled >> 16));
-        pos = control_append_hex16(s_sample_line_buffer, pos,
+        pos = app_cli_append_hex16(s_sample_line_buffer, pos,
                                    (uint16_t)(ch1_scaled & 0xFFFFU));
 
         if ((ch0_over != 0U) || (ch1_over != 0U))

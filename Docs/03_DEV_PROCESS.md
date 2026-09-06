@@ -437,6 +437,13 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **风险点:** USART IDLE 中断不保证帧边界,半帧/多帧必须由 RingBuffer 解析器消化(《02》3.1 注意事项)。
 
+**M4 执行进度(更新于 2026-09-06):**
+
+- **M4-1b/M4-2/M4-3a/M4-3b 已板测通过**,打包为本地提交 `fa844b4`(M4:完成采样滤波换算与CLI采样控制闭环,18 文件 +1204/-32,未推送)。SampleTask 3 点滑动均值滤波 + 码值→mV→×变比三级换算板上验证(CH1 DAC 回读 1650mV);`FF_CODE_PAGE` 932→437 释放 58.7KB RO-data(LFN 保留,《01》六章长文件名为硬约束);`board_dma_map.h` 收全 4 条 DMA 并带编译期冲突检查(实测有效);CLI 骨架 + start/stop/hide/unhide + 周期采样行 + 超限标注 + LED3 + KEY1 启停,HEX 编码板上解码验证正确。
+- **M4-3c 已完成板测前构建**:ratio/limit/protocol/id/baud 五个两段式交互命令接入 app_cli,ControlTask 零改动(pending 状态机在 app_cli 内部);手写定点/HEX/十进制解析器(不用 strtod,避免拉入浮点解析);格式化 helper 从 control_task 迁移到 app_cli 统一提供;新增 BSP `board_usart1_rs485_baudrate_set()` 支持 baud 立即生效。构建 Code=45668/RO-data=2836,RAM 20.3KB(10.6%)。
+- **范围裁定(2026-09-06)**:protocol/id/baud 回复文本暂不带文档原文的 `, saved [OK]`——持久化属 M5,不得假装已保存,M5 接 FlashKV 后补回。`baud` 上电默认 **115200**(用户决定,理由与切换路径见《02》3.1),USART1 波特率未决项就此关闭。
+- **M4-3 待办**:M4-3d = `BSP/board_rtc.c`(LSE 32.768k,从未板测)+ `rtc config/now` + `test` 四项自检(Flash ID/TF/OLED/RTC),届时采样行 `t=<开机秒>` 占位换成真实时间戳。`test`/`conf`/`config save|read` 其余部分按计划归 M4-3d 与 M5。
+
 ---
 
 ## 八、M5:TF 卡与告警

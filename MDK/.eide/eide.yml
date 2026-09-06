@@ -61,6 +61,7 @@ virtualFolder:
         - path: ../BSP/board_dma_map.h
         - path: ../BSP/board_adc.c
         - path: ../BSP/board_dac.c
+        - path: ../BSP/board_rtc.c
       folders: []
     - name: Middleware
       files:

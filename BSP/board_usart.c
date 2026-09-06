@@ -380,6 +380,12 @@ uint32_t board_usart0_rx_dma_error_count_get(void)
     return s_usart0_rx_dma_error_count;
 }
 
+void board_usart1_rs485_baudrate_set(uint32_t baudrate)
+{
+    /* 当前 RS485 上无任务在发送（ProtocolTask 未接入），运行中改 BAUD 安全 */
+    usart_baudrate_set(USART1, baudrate);
+}
+
 void board_usart1_rs485_send_buffer(const uint8_t *data, uint16_t length)
 {
     uint16_t i;

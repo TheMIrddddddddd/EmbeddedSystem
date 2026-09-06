@@ -16,6 +16,7 @@
 #include "board_oled.h"
 #include "board_adc.h"
 #include "board_dac.h"
+#include "board_rtc.h"
 #include "common_flash_layout.h"
 
 int main(void)
@@ -68,6 +69,8 @@ int main(void)
         {
         }
     }
+
+    (void)board_rtc_init();
 
     if (board_dac_init() == 0)
     {

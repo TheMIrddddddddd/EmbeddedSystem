@@ -609,6 +609,11 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\board_dac.c</FilePath>
             </File>
+            <File>
+              <FileName>board_rtc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_rtc.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
