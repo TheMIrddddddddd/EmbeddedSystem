@@ -14,6 +14,7 @@
 #include "board_i2c.h"
 #include "board_oled.h"
 #include "board_adc.h"
+#include "board_dac.h"
 #include "common_flash_layout.h"
 
 int main(void)
@@ -67,7 +68,7 @@ int main(void)
         }
     }
 
-    if (board_adc_init() == 0)
+    if (board_dac_init() == 0)
     {
         __disable_irq();
 
@@ -76,6 +77,23 @@ int main(void)
         }
     }
 
+    if (board_dac_output_set(2048U) == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+
+    if (board_adc_init() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
     task_status = app_tasks_create();
 
     if (task_status != APP_TASKS_STATUS_OK) {
