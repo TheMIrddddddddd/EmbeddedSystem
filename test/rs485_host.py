@@ -62,8 +62,9 @@ class Rs485Host:
         self.ser = serial.Serial(port, baud, timeout=2.0)
 
     def transact(self, address, command, sequence, payload=b"",
-                 expect_reply=True, raw_frame=None):
-        """发送并收应答。返回应答帧 bytes，或 None（超时无应答）。"""
+                 expect_reply=True, raw_frame=None, timeout=2.0):
+        """发送并收应答。返回应答帧 bytes，或 None（超时无应答）。
+        自动上报开启后，0x0382 事件帧可能插在应答前面，逐帧跳过。"""
         frame = raw_frame if raw_frame is not None else \
             build_frame(address, TYPE_COMMAND, command, sequence, payload)
 
@@ -75,16 +76,31 @@ class Rs485Host:
             leftover = self.ser.read(64)
             return None if not leftover else leftover
 
-        head = self._read_exact(12)
-        if head is None:
-            return None
-        payload_length = struct.unpack(">H", head[10:12])[0]
-        if payload_length > 1024:
-            return None
-        rest = self._read_exact(payload_length + 4)   # 数据 + CRC + 帧尾
-        if rest is None:
-            return None
-        return head + rest
+        self.ser.timeout = timeout
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            head = self._read_exact(12)
+            if head is None:
+                return None
+            payload_length = struct.unpack(">H", head[10:12])[0]
+            if payload_length > 1024:
+                return None
+            rest = self._read_exact(payload_length + 4)   # 数据 + CRC + 帧尾
+            if rest is None:
+                return None
+            frame_rx = head + rest
+
+            frame_type = head[5]
+            frame_cmd = struct.unpack(">H", head[6:8])[0]
+            frame_seq = struct.unpack(">H", head[8:10])[0]
+
+            # 只取与本请求匹配的应答帧；设备主动事件帧（05）跳过继续等
+            if frame_type in (TYPE_RESPONSE, TYPE_ERROR) and \
+               frame_cmd == command and frame_seq == sequence:
+                return frame_rx
+
+        return None
 
     def _read_exact(self, count: int):
         data = b""
@@ -92,6 +108,27 @@ class Rs485Host:
         while len(data) < count and time.time() < deadline:
             data += self.ser.read(count - len(data))
         return data if len(data) == count else None
+
+    def drain_events(self, seconds: float):
+        """收 seconds 秒原始帧，返回其中的事件帧列表 [(命令字, 载荷), ...]"""
+        events = []
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            head = self.ser.read(12)
+            if len(head) < 12:
+                continue
+            length = struct.unpack(">H", head[10:12])[0]
+            if length > 1024:
+                continue
+            rest = b""
+            while len(rest) < length + 4:
+                chunk = self.ser.read(length + 4 - len(rest))
+                if not chunk:
+                    break
+                rest += chunk
+            if head[5] == 0x05:
+                events.append((struct.unpack(">H", head[6:8])[0], rest[:length]))
+        return events
 
     def verify_response(self, resp: bytes, address, command, sequence):
         """校验应答帧结构，返回 (ok, 描述, 数据区)"""
@@ -295,7 +332,7 @@ def run_all(host: Rs485Host):
 
     # ---- K-01/K-02：坏帧错误应答 ----
     bad = break_crc(build_frame(0x0001, TYPE_COMMAND, 0x0103, 70))
-    r = host.transact(0, 0, 0, raw_frame=bad)
+    r = host.transact(0x0001, 0x0103, 70, raw_frame=bad)
     ok, msg, _ = host.verify_response(r, 0x0001, 0x0103, 70) if r else (False, "超时", b"")
     check("K-01 CRC坏帧→错误0x01", ok and msg == "ERROR:01(CRC错误)", msg)
 
@@ -304,9 +341,55 @@ def run_all(host: Rs485Host):
     bad_len[11] = 0xFF
     del bad_len[12:]                 # 只留 12B 头，长度字段声称 0xFFFF
     bad_len[-2:] = b"\xB6\xA5"       # 补一个"帧尾"便于固件判定
-    r = host.transact(0, 0, 0, raw_frame=bytes(bad_len))
+    r = host.transact(0x0001, 0x0103, 71, raw_frame=bytes(bad_len))
     ok, msg, _ = host.verify_response(r, 0x0001, 0x0103, 71) if r else (False, "超时", b"")
     check("K-02 长度错→错误0x02", ok and msg == "ERROR:02(长度错误)", msg)
+
+    # ---- M4-4d：自动上报 ----
+    r = host.transact(0x0001, 0x0304, 80, struct.pack(">H", 2))
+    ok, msg, _ = host.verify_response(r, 0x0001, 0x0304, 80)
+    check("0x0304 设上报间隔2s", ok, msg)
+
+    r = host.transact(0x0001, 0x0302, 81)
+    ok, msg, _ = host.verify_response(r, 0x0001, 0x0302, 81)
+    check("0x0302 启动自动上报", ok, msg)
+
+    events = host.drain_events(2.6)
+    reports = [e for e in events if e[0] == 0x0382]
+    h01_ok = len(reports) >= 1
+    detail = "%d帧" % len(reports)
+    if h01_ok:
+        pl = reports[-1][1]
+        if len(pl) == 12:
+            ts = struct.unpack(">I", pl[0:4])[0]
+            v0, v1 = struct.unpack(">ff", pl[4:12])
+            h01_ok = 1700000000 <= ts <= 1900000000 and \
+                     0.0 <= v0 <= 3.5 and 1.5 <= v1 <= 1.8
+            detail += " ts=%d ch0=%.3f ch1=%.3f" % (ts, v0, v1)
+        else:
+            h01_ok = False
+            detail += " 载荷长度%d≠12" % len(pl)
+    check("H-01 自动上报帧格式", h01_ok, detail)
+
+    r = host.transact(0x0001, 0x0201, 82)
+    ok, msg, _ = host.verify_response(r, 0x0001, 0x0201, 82)
+    check("H-02 上报期间查询被拒0x05", ok and msg == "ERROR:05(设备忙)", msg)
+
+    r = host.transact(0x0001, 0x0303, 83)
+    ok, msg, _ = host.verify_response(r, 0x0001, 0x0303, 83)
+    check("0x0303 停止上报", ok, msg)
+
+    leftover = host.drain_events(3.0)
+    still = [e for e in leftover if e[0] == 0x0382]
+    check("停止后无残留上报帧", len(still) == 0, "%d帧" % len(still))
+
+    r = host.transact(0x0001, 0x0201, 84)
+    ok, msg, _ = host.verify_response(r, 0x0001, 0x0201, 84)
+    check("停止后查询恢复OK", ok and msg == "OK", msg)
+
+    r = host.transact(0x0001, 0x0304, 85, struct.pack(">H", 5))
+    ok, msg, _ = host.verify_response(r, 0x0001, 0x0304, 85)
+    check("0x0304 恢复间隔5s", ok, msg)
 
     # ---- 0x0101 重启（放最后：会断链几秒）----
     r = host.transact(0x0001, 0x0101, 90)
@@ -351,6 +434,15 @@ def main():
         ok, msg, data = host.verify_response(resp, 0x0001, command, 0x0001)
         print("%s %s data=%s" % ("OK" if ok else "FAIL", msg, data.hex()))
         return
+
+    if mode == "heartbeat":
+        # 七-7：上电发一次后每 30s 一次。上电后运行此模式，等 35s 应至少收到一帧
+        events = host.drain_events(35.0)
+        beats = [e for e in events if e[0] == 0x8888]
+        print("收到心跳 %d 帧" % len(beats))
+        ok = len(beats) >= 1 and beats[0][1].hex() == "0001"
+        print("A-04 心跳ID一致:", "PASS" if ok else "FAIL")
+        sys.exit(0 if ok else 1)
 
     print("未知模式:", mode)
     sys.exit(1)

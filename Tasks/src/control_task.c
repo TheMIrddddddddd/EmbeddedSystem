@@ -6,6 +6,7 @@
 #include "app_cli.h"
 #include "app_config.h"
 #include "app_protocol.h"
+#include "storage_task.h"
 #include "sample_task.h"
 #include "board_usart.h"
 #include "board_gpio.h"
@@ -326,6 +327,35 @@ static void control_task(void *argument)
             app_protocol_execute(&protocol_request, &protocol_result);
 
             (void)protocol_result_send(&protocol_result);
+        }
+
+        /* LED2 采集工作灯：采样或自动上报任一进行中即亮（十一-1） */
+        board_led_set(2U,
+            (uint8_t)(((config.local_sample_enabled != 0U) ||
+                       (app_protocol_auto_report_enabled() != 0U)) ? 1U : 0U));
+
+        /* LED1 系统灯 1s 闪烁；LED5 TF 挂载常亮——每秒刷一次省总线 */
+        {
+            static uint32_t s_led_last_second = 0xFFFFFFFFU;
+            uint32_t seconds = (uint32_t)(xTaskGetTickCount() /
+                               (TickType_t)configTICK_RATE_HZ);
+
+            if (seconds != s_led_last_second)
+            {
+                storage_task_sdio_diag_t diag;
+                uint8_t tf_ok = 0U;
+
+                s_led_last_second = seconds;
+
+                board_led_set(1U, (uint8_t)((seconds % 2U) != 0U));
+
+                if (storage_task_sdio_diag_get(&diag) != 0)
+                {
+                    tf_ok = (diag.state == STORAGE_TASK_SDIO_STATE_READY) ? 1U : 0U;
+                }
+
+                board_led_set(5U, tf_ok);
+            }
         }
 
         s_control_task_stack_high_water_mark = (uint32_t)uxTaskGetStackHighWaterMark2(NULL);

@@ -19,7 +19,15 @@ uint8_t app_protocol_broadcast_allowed(uint16_t operation);
 void app_protocol_auto_report_set(uint8_t enabled);
 uint8_t app_protocol_auto_report_enabled(void);
 
+void app_protocol_report_interval_set(uint16_t seconds);
+uint16_t app_protocol_report_interval_get(void);
+
 /* 0x0101 重启：应答发出后由 ProtocolTask 轮询并执行复位 */
 uint8_t app_protocol_reboot_pending(void);
+
+/* 数据区大端序写助手（ProtocolTask 构造事件帧复用） */
+void app_protocol_store_u16_be(uint8_t *dst, uint16_t value);
+void app_protocol_store_u32_be(uint8_t *dst, uint32_t value);
+void app_protocol_store_float_be(uint8_t *dst, float value);
 
 #endif /* APP_PROTOCOL_H */

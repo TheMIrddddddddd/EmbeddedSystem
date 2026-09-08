@@ -40,6 +40,14 @@
 #define APP_PROTOCOL_CMD_TF_STATUS          0x0701U
 #define APP_PROTOCOL_CMD_SELF_TEST          0x0801U
 
+#define APP_PROTOCOL_CMD_START_REPORT       0x0302U
+#define APP_PROTOCOL_CMD_STOP_REPORT        0x0303U
+#define APP_PROTOCOL_CMD_SET_REPORT_INTERVAL 0x0304U
+#define APP_PROTOCOL_REPORT_INTERVAL_MIN_S   1U
+#define APP_PROTOCOL_REPORT_INTERVAL_MAX_S     86400U
+#define APP_PROTOCOL_REPORT_INTERVAL_DEFAULT_S 5U
+
+
 /* 广播允许静默执行的写命令（《01》七-6；查询/改 ID/升级禁止） */
 static const uint16_t s_broadcast_allowed[] =
 {
@@ -60,7 +68,9 @@ static uint8_t s_auto_report_enabled;
 /* 0x0101 应答发出后由 ProtocolTask 复位 */
 static uint8_t s_reboot_pending;
 
-static void app_protocol_store_u16_be(uint8_t *dst, uint16_t value)
+static uint16_t s_report_interval_s = APP_PROTOCOL_REPORT_INTERVAL_DEFAULT_S;
+
+void app_protocol_store_u16_be(uint8_t *dst, uint16_t value)
 {
     dst[0] = (uint8_t)(value >> 8);
     dst[1] = (uint8_t)(value & 0xFFU);
@@ -71,7 +81,7 @@ static uint16_t app_protocol_load_u16_be(const uint8_t *src)
     return (uint16_t)(((uint16_t)src[0] << 8) | (uint16_t)src[1]);
 }
 
-static void app_protocol_store_u32_be(uint8_t *dst, uint32_t value)
+void app_protocol_store_u32_be(uint8_t *dst, uint32_t value)
 {
     dst[0] = (uint8_t)(value >> 24);
     dst[1] = (uint8_t)(value >> 16);
@@ -86,7 +96,7 @@ static uint32_t app_protocol_load_u32_be(const uint8_t *src)
 }
 
 /* 文档规定数据区大端，Cortex-M 内存是小端，读写都翻字节 */
-static void app_protocol_store_float_be(uint8_t *dst, float value)
+void app_protocol_store_float_be(uint8_t *dst, float value)
 {
     uint8_t little[4];
 
@@ -157,6 +167,16 @@ uint8_t app_protocol_auto_report_enabled(void)
 uint8_t app_protocol_reboot_pending(void)
 {
     return s_reboot_pending;
+}
+
+void app_protocol_report_interval_set(uint16_t seconds)
+{
+    s_report_interval_s = seconds;
+}
+
+uint16_t app_protocol_report_interval_get(void)
+{
+    return s_report_interval_s;
 }
 
 void app_protocol_execute(const protocol_request_t *request, protocol_result_t *result)
@@ -378,7 +398,47 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
         break;
     }
 
-    /* 0x0302/0303/0304/0x0382 归 M4-4d；0x03AA 归 M7；
+    case APP_PROTOCOL_CMD_START_REPORT:
+        if (payload_length != 0U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+        
+        app_protocol_auto_report_set(1U);
+        break;
+
+    case APP_PROTOCOL_CMD_STOP_REPORT:
+        if (payload_length != 0U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+
+        app_protocol_auto_report_set(0U);
+        break;
+
+        case APP_PROTOCOL_CMD_SET_REPORT_INTERVAL:
+        if (payload_length != 2U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+        {
+            uint16_t seconds = app_protocol_load_u16_be(payload);
+
+            if ((seconds < APP_PROTOCOL_REPORT_INTERVAL_MIN_S) ||
+                (seconds > APP_PROTOCOL_REPORT_INTERVAL_MAX_S))
+            {
+                result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
+                break;
+            }
+
+            app_protocol_report_interval_set(seconds);
+        }
+        break;
+
+    /* 0x0381/0x0382 事件帧由 ProtocolTask 主动发送；0x03AA 归 M7；
      * 0x05xx 归 M6；0x06xx/0x0702 归 M5——落到 default 按非法命令字处理 */
     default:
         result->status = APP_PROTOCOL_ERROR_ILLEGAL_COMMAND;

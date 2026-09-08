@@ -7,10 +7,13 @@
 #include "task.h"
 
 #include "app_config.h"
+#include "app_cli.h"
 #include "app_protocol.h"
 #include "board_usart.h"
+#include "board_rtc.h"
 #include "protocol_frame.h"
 #include "protocol_stream.h"
+#include "sample_task.h"
 #include "task_queues.h"
 
 #define PROTOCOL_TASK_PRIORITY          5U
@@ -35,6 +38,12 @@
 /* 解析器固定头长度（帧头..数据长度字段，与 protocol_stream.c 一致） */
 #define PROTOCOL_STREAM_HEADER_SIZE     12U
 
+/* M4-4d：自动上报与心跳 */
+#define PROTOCOL_EVENT_CMD_REPORT_DATA     0x0382U
+#define PROTOCOL_EVENT_CMD_HEARTBEAT       0x8888U
+#define PROTOCOL_HEARTBEAT_PERIOD_MS       30000U
+#define PROTOCOL_HEARTBEAT_FIRST_DELAY_MS  500U
+
 static StaticTask_t s_protocol_task_tcb;
 static StackType_t  s_protocol_task_stack[PROTOCOL_TASK_STACK_DEPTH];
 
@@ -55,6 +64,9 @@ static uint8_t  s_cache_frame[PROTOCOL_CACHE_SIZE];
 static uint16_t s_cache_frame_length;
  
 static uint32_t s_protocol_request_id;
+
+static TickType_t s_report_last_tick;
+static TickType_t s_heartbeat_next_tick;
 
 static void protocol_send_frame(const uint8_t *data, uint16_t length)
 {
@@ -139,6 +151,75 @@ static void protocol_send_error(uint16_t address, uint16_t command,
     {
         protocol_send_frame(s_tx_buffer, (uint16_t)encoded_length);
     }
+}
+
+/*
+ * 事件帧（帧类型 05）：设备主动发起，无应答、不进重复帧缓存。
+ * 地址填本机 ID（多机总线上标识来源）；序列号填 0（无请求方，文档留白）。
+ */
+static void protocol_send_event(uint16_t command,
+                                const uint8_t *payload, uint16_t payload_length)
+{
+    app_config_t config;
+    protocol_frame_t event_frame;
+    size_t encoded_length = 0U;
+
+    (void)app_config_get(&config);
+
+    event_frame.device_address = config.device_id;
+    event_frame.frame_type = PROTOCOL_TYPE_EVENT;
+    event_frame.command = command;
+    event_frame.sequence = 0U;
+    event_frame.payload_length = payload_length;
+    event_frame.payload = payload;
+
+    if (protocol_frame_encode(&event_frame, s_tx_buffer, sizeof(s_tx_buffer),
+                              &encoded_length) == PROTOCOL_STATUS_OK)
+    {
+        protocol_send_frame(s_tx_buffer, (uint16_t)encoded_length);
+    }
+}
+
+/* 0x0382：时间戳 4B + CH0/CH1 各 4B（大端，已乘变比），取共享区最新快照 */
+static void protocol_send_report_data(void)
+{
+    sample_snapshot_t snapshot;
+    board_rtc_time_t rtc_time;
+    uint8_t payload[12];
+    uint32_t timestamp;
+
+    if (sample_task_snapshot_get(&snapshot) == 0)
+    {
+        return;   /* 采集引擎常驻，正常到不了这里 */
+    }
+
+    if (board_rtc_time_get(&rtc_time) != 0)
+    {
+        timestamp = app_cli_time_to_unix(&rtc_time);
+    }
+    else
+    {
+        timestamp = (uint32_t)(xTaskGetTickCount() /
+                    (TickType_t)configTICK_RATE_HZ);
+    }
+
+    app_protocol_store_u32_be(&payload[0], timestamp);
+    app_protocol_store_float_be(&payload[4], snapshot.value_ch0);
+    app_protocol_store_float_be(&payload[8], snapshot.value_ch1);
+
+    protocol_send_event(PROTOCOL_EVENT_CMD_REPORT_DATA, payload, 12U);
+}
+
+/* 0x8888：载荷 2B 设备 ID（A-04"ID 一致"的判定来源；文档未定义载荷，此为补白） */
+static void protocol_send_heartbeat(void)
+{
+    app_config_t config;
+    uint8_t payload[2];
+
+    (void)app_config_get(&config);
+    app_protocol_store_u16_be(payload, config.device_id);
+
+    protocol_send_event(PROTOCOL_EVENT_CMD_HEARTBEAT, payload, 2U);
 }
 
 /*
@@ -308,6 +389,10 @@ static void protocol_task(void *argument)
 
     protocol_stream_init(&s_protocol_stream);
 
+    s_report_last_tick = xTaskGetTickCount();
+    s_heartbeat_next_tick = xTaskGetTickCount() +
+                            pdMS_TO_TICKS(PROTOCOL_HEARTBEAT_FIRST_DELAY_MS);
+
     for(;;)
     {
         while (board_usart1_rs485_try_receive_byte(&byte) != 0U)
@@ -324,6 +409,33 @@ static void protocol_task(void *argument)
             {
                 /* K-01/K-02：帧形完整的坏帧回错误应答，其余静默 */
                 protocol_process_bad_frame(&s_protocol_bad);
+            }
+        }
+
+        /* 自动上报：使能位由 0x0302/0303 经 ControlTask 置位/清除 */
+        if (app_protocol_auto_report_enabled() != 0U)
+        {
+            TickType_t now = xTaskGetTickCount();
+            TickType_t interval_ticks =
+                (TickType_t)app_protocol_report_interval_get() *
+                (TickType_t)configTICK_RATE_HZ;
+
+            if ((now - s_report_last_tick) >= interval_ticks)
+            {
+                protocol_send_report_data();
+                s_report_last_tick = now;
+            }
+        }
+
+        /* 心跳：上电后先发一次，之后每 30s（七-7） */
+        {
+            TickType_t now = xTaskGetTickCount();
+
+            if (now >= s_heartbeat_next_tick)
+            {
+                protocol_send_heartbeat();
+                s_heartbeat_next_tick = now +
+                    pdMS_TO_TICKS(PROTOCOL_HEARTBEAT_PERIOD_MS);
             }
         }
 
