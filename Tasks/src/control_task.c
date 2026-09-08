@@ -5,6 +5,7 @@
 #include "task_queues.h"
 #include "app_cli.h"
 #include "app_config.h"
+#include "app_protocol.h"
 #include "sample_task.h"
 #include "board_usart.h"
 #include "board_gpio.h"
@@ -257,8 +258,7 @@ static void control_print_sample_line(const app_config_t *config)
         }
     }
 
-    board_led_set(CONTROL_LED_OVER_LIMIT,
-                  (uint8_t)(((ch0_over != 0U) || (ch1_over != 0U)) ? 1U : 0U));
+    board_led_set(CONTROL_LED_OVER_LIMIT, (uint8_t)(((ch0_over != 0U) || (ch1_over != 0U)) ? 1U : 0U));
 
     s_sample_line_buffer[pos] = '\r';
     s_sample_line_buffer[pos + 1U] = '\n';
@@ -270,6 +270,7 @@ static void control_task(void *argument)
 {
     key_event_t key_event;
     app_config_t config;
+    protocol_request_t protocol_request;
     uint8_t sample_was_enabled = 0U;
     TickType_t last_print_tick = 0U;
     uint8_t byte;
@@ -311,12 +312,20 @@ static void control_task(void *argument)
         if (key_event_receive(&key_event, 0U) == pdTRUE)
         {
             /* 《01》四-2：KEY1 按下翻转采样 */
-            if ((key_event.key_id == 1U) &&
-                (key_event.event == (uint8_t)EBTN_EVT_ONPRESS))
+            if ((key_event.key_id == 1U) && (key_event.event == (uint8_t)EBTN_EVT_ONPRESS))
             {
                 (void)app_config_sample_enable_set(
                     (config.local_sample_enabled != 0U) ? 0U : 1U);
             }
+        }
+
+        if (protocol_request_receive(&protocol_request, 0U) == pdTRUE)
+        {
+            protocol_result_t protocol_result;
+
+            app_protocol_execute(&protocol_request, &protocol_result);
+
+            (void)protocol_result_send(&protocol_result);
         }
 
         s_control_task_stack_high_water_mark = (uint32_t)uxTaskGetStackHighWaterMark2(NULL);

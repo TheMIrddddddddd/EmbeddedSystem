@@ -78,6 +78,7 @@ virtualFolder:
         - path: ../Middleware/FatFs/src/fattime.c
         - path: ../Middleware/FatFs/src/ffsystem.c
         - path: ../Middleware/FatFs/src/ffunicode.c
+        - path: ../Middleware/Protocol/src/protocol_stream.c
       folders: []
     - name: Common
       files:
@@ -96,6 +97,7 @@ virtualFolder:
             - path: ../App/src/freertos_static.c
             - path: ../App/src/app_config.c
             - path: ../App/src/app_cli.c
+            - path: ../App/src/app_protocol.c
           folders: []
         - name: config
           files:

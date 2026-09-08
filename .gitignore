@@ -28,3 +28,6 @@ MDK/BootEIDE/target/
 # IDE 配置
 .vscode/*
 !.vscode/launch.json
+
+# Python 测试工具缓存
+test/__pycache__/

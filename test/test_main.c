@@ -40,6 +40,14 @@ void test_protocol_decode_rejects_fixed_field_errors(void);
 void test_protocol_decode_rejects_length_errors(void);
 void test_protocol_decode_rejects_crc_and_tail_errors(void);
 void test_protocol_decode_consumes_one_frame(void);
+void test_stream_single_frame_byte_by_byte(void);
+void test_stream_noise_prefix(void);
+void test_stream_half_frame_then_complete(void);
+void test_stream_two_frames_sticky(void);
+void test_stream_crc_error_resync_to_next_frame(void);
+void test_stream_bad_length_dropped(void);
+void test_stream_dangling_a5_then_resume(void);
+void test_stream_bad_frame_snapshot_surfaces(void);
 void test_modbus_encode_read_request(void);
 void test_modbus_encode_empty_data(void);
 void test_modbus_decode_read_response(void);
@@ -126,6 +134,15 @@ int main(void)
     RUN_TEST(test_protocol_decode_rejects_length_errors);
     RUN_TEST(test_protocol_decode_rejects_crc_and_tail_errors);
     RUN_TEST(test_protocol_decode_consumes_one_frame);
+
+    RUN_TEST(test_stream_single_frame_byte_by_byte);
+    RUN_TEST(test_stream_noise_prefix);
+    RUN_TEST(test_stream_half_frame_then_complete);
+    RUN_TEST(test_stream_two_frames_sticky);
+    RUN_TEST(test_stream_crc_error_resync_to_next_frame);
+    RUN_TEST(test_stream_bad_length_dropped);
+    RUN_TEST(test_stream_dangling_a5_then_resume);
+    RUN_TEST(test_stream_bad_frame_snapshot_surfaces);
 
     RUN_TEST(test_modbus_encode_read_request);
     RUN_TEST(test_modbus_encode_empty_data);

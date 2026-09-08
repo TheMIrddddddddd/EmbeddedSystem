@@ -684,6 +684,11 @@
               <FileType>1</FileType>
               <FilePath>..\Middleware\FatFs\src\ffunicode.c</FilePath>
             </File>
+            <File>
+              <FileName>protocol_stream.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Protocol\src\protocol_stream.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -738,6 +743,11 @@
               <FileName>app_cli.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\src\app_cli.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\app_protocol.c</FilePath>
             </File>
           </Files>
         </Group>
