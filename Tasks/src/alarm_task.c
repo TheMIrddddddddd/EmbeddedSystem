@@ -1,6 +1,7 @@
 #include "alarm_task.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "task_events.h"
 
 #define ALARM_TASK_PRIORITY          3U
 #define ALARM_TASK_STACK_DEPTH       256U
@@ -14,6 +15,15 @@ static volatile uint32_t s_alarm_task_stack_high_water_mark;
 static void alarm_task(void *argument)
 {
     (void)argument;
+
+    while ((xEventGroupGetBits(task_events_get()) &
+            TASK_EVENT_CONFIG_READY) == 0U)
+    {
+        s_alarm_task_stack_high_water_mark =
+            (uint32_t)uxTaskGetStackHighWaterMark2(NULL);
+        s_alarm_task_heartbeat++;
+        vTaskDelay(pdMS_TO_TICKS(10U));
+    }
 
     for(;;)
     {

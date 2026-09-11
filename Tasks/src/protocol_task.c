@@ -16,6 +16,7 @@
 #include "protocol_stream.h"
 #include "sample_task.h"
 #include "task_queues.h"
+#include "task_events.h"
 
 #define PROTOCOL_TASK_PRIORITY          5U
 #define PROTOCOL_TASK_STACK_DEPTH       256U
@@ -77,6 +78,7 @@ static uint8_t s_modbus_rx_buffer[PROTOCOL_MODBUS_RX_BUFFER_SIZE];
 
 static uint8_t s_protocol_active_kind = PROTOCOL_ACTIVE_KIND_INVALID;
 static uint32_t s_protocol_mode_epoch;
+static uint32_t s_protocol_applied_baudrate;
 
 static void protocol_send_frame(const uint8_t *data, uint16_t length)
 {
@@ -299,6 +301,13 @@ static void protocol_process_modbus_request(
     if (app_config_get(&config) == 0)
     {
         return;
+    }
+
+    /* USART1 的通信参数只能由 ProtocolTask 应用。 */
+    if (s_protocol_applied_baudrate != config.rs485_baudrate)
+    {
+        board_usart1_rs485_baudrate_set(config.rs485_baudrate);
+        s_protocol_applied_baudrate = config.rs485_baudrate;
     }
 
     /* 非本机单播静默，广播地址 0 交给业务层处理。 */
@@ -738,6 +747,15 @@ static void protocol_task(void *argument)
     uint8_t byte;
 
     (void)argument;
+
+    while ((xEventGroupGetBits(task_events_get()) &
+            TASK_EVENT_CONFIG_READY) == 0U)
+    {
+        s_protocol_task_stack_high_water_mark =
+            (uint32_t)uxTaskGetStackHighWaterMark2(NULL);
+        s_protocol_task_heartbeat++;
+        vTaskDelay(pdMS_TO_TICKS(10U));
+    }
 
     protocol_stream_init(&s_protocol_stream);
 

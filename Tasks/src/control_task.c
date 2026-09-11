@@ -10,6 +10,7 @@
 #include "app_modbus.h"
 #include "storage_task.h"
 #include "sample_task.h"
+#include "task_events.h"
 #include "board_usart.h"
 #include "board_gpio.h"
 #include "board_rtc.h"
@@ -365,23 +366,79 @@ static void control_execute_protocol_request(
     }
 }
 
+static uint8_t control_apply_persisted_config(
+    const storage_task_persist_result_t *result)
+{
+    app_config_t config;
+
+    if ((result == NULL) ||
+        (result->status != STORAGE_TASK_PERSIST_STATUS_OK) ||
+        (result->payload_length != APP_CONFIG_SERIALIZED_SIZE))
+    {
+        return 0U;
+    }
+
+    if (app_config_decode(result->payload,
+                          result->payload_length,
+                          &config) == 0)
+    {
+        return 0U;
+    }
+
+    if (app_config_apply(&config) == 0)
+    {
+        return 0U;
+    }
+
+    if ((sample_task_ratio_set(0U, config.ratio[0]) == 0) ||
+        (sample_task_ratio_set(1U, config.ratio[1]) == 0))
+    {
+        return 0U;
+    }
+
+    return 1U;
+}
+
 static void control_task(void *argument)
 {
     key_event_t key_event;
     app_config_t config;
+    storage_task_persist_result_t persist_result;
     /* ControlTask 独占，静态存放扩容后的队列对象。 */
     static protocol_request_t protocol_request;
     static protocol_result_t protocol_result;
     uint8_t sample_was_enabled = 0U;
+    uint8_t config_ready = 0U;
     TickType_t last_print_tick = 0U;
     uint8_t byte;
 
     (void)argument;
 
-    app_cli_banner_print();
-
     for(;;)
     {
+        if (config_ready == 0U)
+        {
+            if ((storage_task_persist_result_get(&persist_result, 0U) != 0) &&
+                (persist_result.request_id == 0U) &&
+                (persist_result.operation == STORAGE_TASK_PERSIST_CONFIG_LOAD))
+            {
+                /* Flash 无有效配置时保留 main() 已建立的默认值。 */
+                (void)control_apply_persisted_config(&persist_result);
+                (void)xEventGroupSetBits(task_events_get(),
+                                         TASK_EVENT_CONFIG_READY);
+                config_ready = 1U;
+                app_cli_banner_print();
+            }
+            else
+            {
+                s_control_task_stack_high_water_mark =
+                    (uint32_t)uxTaskGetStackHighWaterMark2(NULL);
+                s_control_task_heartbeat++;
+                vTaskDelay(pdMS_TO_TICKS(10U));
+                continue;
+            }
+        }
+
         while (board_usart0_try_receive_byte(&byte) != 0U)
         {
             cli_line_process_byte(byte);

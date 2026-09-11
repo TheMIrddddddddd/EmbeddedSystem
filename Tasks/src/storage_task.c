@@ -3,6 +3,7 @@
 #include "storage_persistence.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -499,6 +500,22 @@ static void storage_task_process_persist_request(void)
     (void)storage_persist_result_send(&s_storage_persist_result);
 }
 
+static void storage_task_publish_config_load(void)
+{
+    static storage_task_persist_request_t request;
+    static storage_task_persist_result_t result;
+
+    (void)memset(&request, 0, sizeof(request));
+    request.request_id = 0U;
+    request.operation = STORAGE_TASK_PERSIST_CONFIG_LOAD;
+    request.origin = STORAGE_TASK_PERSIST_ORIGIN_BOOT;
+
+    if (storage_persistence_request_handle(&request, &result) != 0)
+    {
+        (void)storage_persist_result_send(&result);
+    }
+}
+
 static void storage_task(void *argument)
 {
     uint32_t notification_value;
@@ -506,6 +523,7 @@ static void storage_task(void *argument)
     (void)argument;
 
     (void)storage_persistence_init();
+    storage_task_publish_config_load();
     storage_sdio_initialize();
     storage_fatfs_mount();
 

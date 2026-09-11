@@ -4,6 +4,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "task_events.h"
 
 #define SAMPLE_TASK_PRIORITY          4U
 #define SAMPLE_TASK_STACK_DEPTH       256U
@@ -177,12 +178,26 @@ static void sample_task_process_one_sample(void)
 
 }
 
+static void sample_task_wait_for_config(void)
+{
+    while ((xEventGroupGetBits(task_events_get()) &
+            TASK_EVENT_CONFIG_READY) == 0U)
+    {
+        s_sample_task_stack_high_water_mark =
+            (uint32_t)uxTaskGetStackHighWaterMark2(NULL);
+        s_sample_task_heartbeat++;
+        vTaskDelay(pdMS_TO_TICKS(10U));
+    }
+}
+
 static void sample_task(void *argument)
 {
     TickType_t next_wake_tick;
     uint32_t notification_value;
 
     (void)argument;
+
+    sample_task_wait_for_config();
 
     if (board_adc_start() == 0)
     {
