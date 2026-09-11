@@ -745,6 +745,16 @@
               <FilePath>..\App\src\app_config.c</FilePath>
             </File>
             <File>
+              <FileName>app_config_ini.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\app_config_ini.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_config_import.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\app_config_import.c</FilePath>
+            </File>
+            <File>
               <FileName>app_cli.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\src\app_cli.c</FilePath>

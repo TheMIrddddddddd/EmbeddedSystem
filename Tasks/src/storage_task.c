@@ -13,6 +13,8 @@
 
 #include "diskio.h"
 #include "ff.h"
+#include "app_config_import.h"
+#include "app_config_ini.h"
 
 #define STORAGE_TASK_PRIORITY              3U
 #define STORAGE_TASK_STACK_DEPTH           512U
@@ -59,6 +61,8 @@ static QueueHandle_t s_storage_file_request_queue_handle;
 static QueueHandle_t s_storage_file_result_queue_handle;
 static storage_task_persist_request_t s_storage_persist_request;
 static storage_task_persist_result_t s_storage_persist_result;
+static uint8_t s_storage_config_file[APP_CONFIG_INI_FILE_MAX];
+static uint8_t s_storage_config_encoded[APP_CONFIG_SERIALIZED_SIZE];
 static FATFS s_storage_fatfs;
 static volatile FRESULT s_storage_fatfs_mount_result = FR_NOT_READY;
 static volatile uint8_t s_storage_fatfs_mounted;
@@ -486,11 +490,79 @@ send_result:
 
 static void storage_task_process_persist_request(void)
 {
+    FIL file;
+    UINT transferred;
+    FRESULT file_status;
+    app_config_t base;
+    app_config_t candidate;
+    uint16_t encoded_length;
+    uint16_t error_line;
+
     if (storage_persist_request_receive(&s_storage_persist_request, 0U) != pdPASS)
     {
         return;
     }
 
+    if (s_storage_persist_request.operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT)
+    {
+        (void)memset(&s_storage_persist_result, 0, sizeof(s_storage_persist_result));
+        s_storage_persist_result.request_id = s_storage_persist_request.request_id;
+        s_storage_persist_result.operation = s_storage_persist_request.operation;
+        if (s_storage_fatfs_mounted == 0U)
+        {
+            s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_NOT_READY;
+            (void)storage_persist_result_send(&s_storage_persist_result);
+            return;
+        }
+        file_status = f_open(&file, "0:/config/config.ini", FA_READ);
+        if (file_status == FR_NO_FILE)
+        {
+            s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_NOT_FOUND;
+            (void)storage_persist_result_send(&s_storage_persist_result);
+            return;
+        }
+        if (file_status != FR_OK)
+        {
+            s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_DATA_ERROR;
+            (void)storage_persist_result_send(&s_storage_persist_result);
+            return;
+        }
+        file_status = f_read(&file, s_storage_config_file,
+                             sizeof(s_storage_config_file), &transferred);
+        (void)f_close(&file);
+        if ((file_status != FR_OK) || (transferred > APP_CONFIG_INI_FILE_MAX))
+        {
+            s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_DATA_ERROR;
+            (void)storage_persist_result_send(&s_storage_persist_result);
+            return;
+        }
+        (void)app_config_get(&base);
+        encoded_length = 0U;
+        error_line = 0U;
+        if (app_config_import_prepare((const char *)s_storage_config_file,
+                                      (uint16_t)transferred, &base, &candidate,
+                                      s_storage_config_encoded,
+                                      sizeof(s_storage_config_encoded),
+                                      &encoded_length, &error_line) == 0)
+        {
+            s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_DATA_ERROR;
+            (void)storage_persist_result_send(&s_storage_persist_result);
+            return;
+        }
+        if (storage_persistence_config_save(s_storage_config_encoded,
+                                             encoded_length) != STORAGE_PERSISTENCE_STATUS_OK)
+        {
+            s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_FLASH_ERROR;
+            (void)storage_persist_result_send(&s_storage_persist_result);
+            return;
+        }
+        s_storage_persist_result.payload_length = encoded_length;
+        (void)memcpy(s_storage_persist_result.payload,
+                     s_storage_config_encoded, encoded_length);
+        s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_OK;
+        (void)storage_persist_result_send(&s_storage_persist_result);
+        return;
+    }
     if (storage_persistence_request_handle(&s_storage_persist_request,
                                            &s_storage_persist_result) == 0)
     {
@@ -711,7 +783,7 @@ int storage_task_persist_request_submit(
         return 0;
     }
 
-    if (request->operation > STORAGE_TASK_PERSIST_FLASH_DIAG)
+    if (request->operation > STORAGE_TASK_PERSIST_CONFIG_IMPORT)
     {
         return 0;
     }
