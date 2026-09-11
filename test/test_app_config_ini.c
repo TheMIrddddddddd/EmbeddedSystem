@@ -545,9 +545,12 @@ static void test_line_apply_all_fields(void)
     const char *lines[] = {"protocol_mode=1", "device_id=00f7", "sample_period=010",
         "alarm_mode=01", "ch0_ratio=3.25", "ch1_ratio=4.5", "ch0_limit=250.5", "ch1_limit=499.5"};
     app_config_t candidate;
+    app_config_ini_context_t context;
     app_config_t expected;
     unsigned i;
     test_ini_candidate_init(&candidate);
+    context.candidate = &candidate;
+    context.seen_mask = 0U;
     expected = candidate;
     for (i = 0U; i < sizeof(lines) / sizeof(lines[0]); i++)
     {
@@ -564,7 +567,7 @@ static void test_line_apply_all_fields(void)
         default: break;
         }
         TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR, app_config_ini_line_apply(
-            lines[i], (uint16_t)strlen(lines[i]), &candidate));
+            lines[i], (uint16_t)strlen(lines[i]), &context));
         test_ini_candidate_equal(&expected, &candidate);
     }
 }
@@ -578,14 +581,17 @@ static void test_line_apply_errors_preserve_candidate(void)
         "ch0_ratio=100.000001", "ch1_ratio=NaN", "ch0_limit=500.000001",
         "ch1_limit=-1", "alarm_mode=2 # comment", "ch0_ratio", "ch0_ratio=", "ch0_ratio=1=2"};
     app_config_t candidate;
+    app_config_ini_context_t context;
     unsigned char before[sizeof(candidate)];
     unsigned i;
     test_ini_candidate_init(&candidate);
+    context.candidate = &candidate;
+    context.seen_mask = 0U;
     memcpy(before, &candidate, sizeof(candidate));
     for (i = 0U; i < sizeof(lines) / sizeof(lines[0]); i++)
     {
         TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR, app_config_ini_line_apply(
-            lines[i], (uint16_t)strlen(lines[i]), &candidate));
+            lines[i], (uint16_t)strlen(lines[i]), &context));
         TEST_ASSERT_EQUAL_MEMORY(before, &candidate, sizeof(candidate));
     }
 }
@@ -597,23 +603,26 @@ static void test_line_apply_skip_and_arguments(void)
     const char nul[] = "device_id=00\0f";
     char long_line[129];
     app_config_t candidate;
+    app_config_ini_context_t context;
     unsigned char before[sizeof(candidate)];
     unsigned i;
     test_ini_candidate_init(&candidate);
+    context.candidate = &candidate;
+    context.seen_mask = 0U;
     memcpy(before, &candidate, sizeof(candidate));
     for (i = 0U; i < sizeof(lines) / sizeof(lines[0]); i++)
     {
         TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_SKIP, app_config_ini_line_apply(
-            lines[i], (uint16_t)strlen(lines[i]), &candidate));
+            lines[i], (uint16_t)strlen(lines[i]), &context));
         TEST_ASSERT_EQUAL_MEMORY(before, &candidate, sizeof(candidate));
     }
     memset(long_line, 'a', sizeof(long_line));
     TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
-        app_config_ini_line_apply(long_line, sizeof(long_line), &candidate));
+        app_config_ini_line_apply(long_line, sizeof(long_line), &context));
     TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
-        app_config_ini_line_apply(nul, sizeof(nul) - 1U, &candidate));
+        app_config_ini_line_apply(nul, sizeof(nul) - 1U, &context));
     TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
-        app_config_ini_line_apply(NULL, 0U, &candidate));
+        app_config_ini_line_apply(NULL, 0U, &context));
     TEST_ASSERT_EQUAL_MEMORY(before, &candidate, sizeof(candidate));
     TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
         app_config_ini_line_apply("alarm_mode=1", 12U, NULL));
@@ -625,15 +634,38 @@ static void test_line_apply_raw_input_unchanged(void)
     const char line[] = " \tch1_limit = 0250.50 \t";
     char raw[sizeof(line) - 1U];
     app_config_t candidate;
+    app_config_ini_context_t context;
     app_config_t expected;
     memcpy(raw, line, sizeof(raw));
     test_ini_candidate_init(&candidate);
+    context.candidate = &candidate;
+    context.seen_mask = 0U;
     expected = candidate;
     expected.limit[1] = 250.5f;
     TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR,
-        app_config_ini_line_apply(raw, sizeof(raw), &candidate));
+        app_config_ini_line_apply(raw, sizeof(raw), &context));
     test_ini_candidate_equal(&expected, &candidate);
     TEST_ASSERT_EQUAL_MEMORY(line, raw, sizeof(raw));
+}
+
+/* 验证同一键第二次出现被拒绝，候选值及 seen_mask 都保持第一次结果。 */
+static void test_line_apply_rejects_duplicate_key(void)
+{
+    const char first[] = "device_id=0002";
+    const char duplicate[] = "device_id=0003";
+    app_config_t candidate;
+    app_config_ini_context_t context;
+    test_ini_candidate_init(&candidate);
+    context.candidate = &candidate;
+    context.seen_mask = 0U;
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR,
+        app_config_ini_line_apply(first, sizeof(first) - 1U, &context));
+    TEST_ASSERT_EQUAL_UINT16(2U, candidate.device_id);
+    TEST_ASSERT_EQUAL_UINT16(1U, context.seen_mask);
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
+        app_config_ini_line_apply(duplicate, sizeof(duplicate) - 1U, &context));
+    TEST_ASSERT_EQUAL_UINT16(2U, candidate.device_id);
+    TEST_ASSERT_EQUAL_UINT16(1U, context.seen_mask);
 }
 
 /* PC 测试入口：返回 Unity 失败数供命令行判断。 */
@@ -672,5 +704,6 @@ int main(void)
     RUN_TEST(test_line_apply_errors_preserve_candidate);
     RUN_TEST(test_line_apply_skip_and_arguments);
     RUN_TEST(test_line_apply_raw_input_unchanged);
+    RUN_TEST(test_line_apply_rejects_duplicate_key);
     return UNITY_END();
 }

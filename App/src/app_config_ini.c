@@ -18,18 +18,24 @@ static int app_config_ini_key_equal(const char *key, uint16_t length,
  * 不检查重复/缺失键和跨字段约束；中间候选配置不代表可应用配置。
  */
 app_config_ini_line_status_t app_config_ini_line_apply(
-    const char *line, uint16_t length, app_config_t *candidate)
+    const char *line, uint16_t length, app_config_ini_context_t *context)
 {
     app_config_ini_pair_t pair;
     app_config_ini_line_status_t status;
     const char *key;
     const char *value;
     int parsed;
+    app_config_t before;
 
-    if (candidate == NULL)
+    uint16_t field_bit;
+    app_config_t *candidate;
+
+    if ((context == NULL) || (context->candidate == NULL))
     {
         return APP_CONFIG_INI_LINE_ERROR;
     }
+    candidate = context->candidate;
+    before = *candidate;
     status = app_config_ini_line_parse(line, length, &pair);
     if (status != APP_CONFIG_INI_LINE_PAIR)
     {
@@ -38,43 +44,52 @@ app_config_ini_line_status_t app_config_ini_line_apply(
 
     key = line + pair.key_offset;
     value = line + pair.value_offset;
+    field_bit = 0U;
     if (app_config_ini_key_equal(key, pair.key_length, "device_id"))
     {
+        field_bit = 1U << 0U;
         parsed = app_config_ini_device_id_parse(value, pair.value_length,
                                                 &candidate->device_id);
     }
     else if (app_config_ini_key_equal(key, pair.key_length, "sample_period"))
     {
+        field_bit = 1U << 1U;
         parsed = app_config_ini_sample_period_parse(value, pair.value_length,
                                                     &candidate->sample_period_s);
     }
     else if (app_config_ini_key_equal(key, pair.key_length, "protocol_mode"))
     {
+        field_bit = 1U << 2U;
         parsed = app_config_ini_protocol_mode_parse(value, pair.value_length,
                                                     &candidate->protocol_mode);
     }
     else if (app_config_ini_key_equal(key, pair.key_length, "alarm_mode"))
     {
+        field_bit = 1U << 3U;
         parsed = app_config_ini_alarm_mode_parse(value, pair.value_length,
                                                  &candidate->alarm_mode);
     }
     else if (app_config_ini_key_equal(key, pair.key_length, "ch0_ratio"))
     {
+        field_bit = 1U << 4U;
         parsed = app_config_ini_ratio_parse(value, pair.value_length,
                                             &candidate->ratio[0]);
     }
     else if (app_config_ini_key_equal(key, pair.key_length, "ch1_ratio"))
     {
+        field_bit = 1U << 5U;
         parsed = app_config_ini_ratio_parse(value, pair.value_length,
                                             &candidate->ratio[1]);
     }
     else if (app_config_ini_key_equal(key, pair.key_length, "ch0_limit"))
     {
+        field_bit = 1U << 6U;
         parsed = app_config_ini_limit_parse(value, pair.value_length,
                                             &candidate->limit[0]);
     }
     else if (app_config_ini_key_equal(key, pair.key_length, "ch1_limit"))
     {
+        field_bit = 1U << 7U;
         parsed = app_config_ini_limit_parse(value, pair.value_length,
                                             &candidate->limit[1]);
     }
@@ -83,7 +98,18 @@ app_config_ini_line_status_t app_config_ini_line_apply(
         return APP_CONFIG_INI_LINE_ERROR;
     }
 
-    return parsed ? APP_CONFIG_INI_LINE_PAIR : APP_CONFIG_INI_LINE_ERROR;
+    /* 解析前先拒绝重复键，避免失败时已把候选字段覆盖。 */
+    if ((context->seen_mask & field_bit) != 0U)
+    {
+        *candidate = before;
+        return APP_CONFIG_INI_LINE_ERROR;
+    }
+    if (parsed == 0)
+    {
+        return APP_CONFIG_INI_LINE_ERROR;
+    }
+    context->seen_mask = (uint16_t)(context->seen_mask | field_bit);
+    return APP_CONFIG_INI_LINE_PAIR;
 }
 
 /* 解析 length 字节的非负十进制片段，语法为整数或整数加 1~6 位小数。
