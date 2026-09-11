@@ -5,6 +5,8 @@
 #include "app_config.h"
 
 #define APP_CONFIG_INI_LINE_MAX 128U
+#define APP_CONFIG_INI_FILE_MAX 1024U
+#define APP_CONFIG_INI_REQUIRED_MASK 0x00FFU
 
 typedef enum
 {
@@ -95,5 +97,12 @@ int app_config_ini_limit_parse(const char *value, uint16_t length, float *out);
  */
 app_config_ini_line_status_t app_config_ini_line_apply(
     const char *line, uint16_t length, app_config_ini_context_t *context);
+
+/* 解析完整文件；base 是导入开始时快照，candidate 仅在全部成功后写入。
+ * 文件八字段覆盖对应成员，其他运行字段从 base 继承；失败时 candidate/error_line 不变。
+ */
+int app_config_ini_parse_file(const char *file, uint16_t length,
+                              const app_config_t *base, app_config_t *candidate,
+                              uint16_t *error_line);
 
 #endif /* APP_CONFIG_INI_H */

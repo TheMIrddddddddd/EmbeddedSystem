@@ -2,6 +2,10 @@
 #include "unity.h"
 #include "app_config_ini.h"
 
+/* app_config.c 的 PC 临界区替身；文件解析本身不依赖临界区。 */
+void test_critical_enter(void) {}
+void test_critical_exit(void) {}
+
 /* Unity 前置钩子：本测试无全局运行配置或硬件依赖。 */
 void setUp(void) {}
 
@@ -668,6 +672,59 @@ static void test_line_apply_rejects_duplicate_key(void)
     TEST_ASSERT_EQUAL_UINT16(1U, context.seen_mask);
 }
 
+/* 验证完整文件解析、字段齐全、CRLF/LF 混用和非文件字段继承。 */
+static void test_parse_file_success(void)
+{
+    const char file[] = "# c\r\n\nprotocol_mode=0\r\ndevice_id=0002\r\nsample_period=15\r\nalarm_mode=1\r\nch0_ratio=2.5\r\nch1_ratio=3.5\r\nch0_limit=250\r\nch1_limit=499.5";
+    app_config_t base;
+    app_config_t candidate;
+    uint16_t error_line = 0U;
+    test_ini_candidate_init(&base); candidate = base;
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_parse_file(file, sizeof(file)-1U,
+        &base, &candidate, &error_line));
+    TEST_ASSERT_EQUAL_UINT16(2U, candidate.device_id);
+    TEST_ASSERT_EQUAL_UINT8(15U, candidate.sample_period_s);
+    TEST_ASSERT_EQUAL_UINT8(1U, candidate.alarm_mode);
+    TEST_ASSERT_EQUAL_FLOAT(2.5f, candidate.ratio[0]);
+    TEST_ASSERT_EQUAL_FLOAT(499.5f, candidate.limit[1]);
+    TEST_ASSERT_EQUAL_UINT32(base.rs485_baudrate, candidate.rs485_baudrate);
+    TEST_ASSERT_EQUAL_UINT8(base.local_sample_enabled, candidate.local_sample_enabled);
+}
+
+/* 验证缺失、重复、非法跨字段和孤立 CR 失败且不覆盖 candidate。 */
+static void test_parse_file_failures(void)
+{
+    const char *files[] = {
+        "device_id=0001\nsample_period=5\nprotocol_mode=0\nalarm_mode=2\nch0_ratio=1\nch1_ratio=1\nch0_limit=2\n",
+        "device_id=0001\ndevice_id=0002\nsample_period=5\nprotocol_mode=0\nalarm_mode=2\nch0_ratio=1\nch1_ratio=1\nch0_limit=2\nch1_limit=2\n",
+        "device_id=00f8\nsample_period=5\nprotocol_mode=1\nalarm_mode=2\nch0_ratio=1\nch1_ratio=1\nch0_limit=2\nch1_limit=2\n",
+        "device_id=0001\rsample_period=5\nprotocol_mode=0\nalarm_mode=2\nch0_ratio=1\nch1_ratio=1\nch0_limit=2\nch1_limit=2\n"};
+    app_config_t base; app_config_t candidate; app_config_t before; uint16_t line; unsigned i;
+    test_ini_candidate_init(&base); candidate = base;
+    for (i=0U; i<sizeof(files)/sizeof(files[0]); i++)
+    {
+        before = candidate; line = 0U;
+        TEST_ASSERT_EQUAL_INT(0, app_config_ini_parse_file(files[i], (uint16_t)strlen(files[i]),
+            &base, &candidate, &line));
+        test_ini_candidate_equal(&before, &candidate);
+        TEST_ASSERT_TRUE(line > 0U);
+    }
+}
+
+/* 验证文件总长度边界、空文件及无效参数。 */
+static void test_parse_file_boundaries(void)
+{
+    char file[APP_CONFIG_INI_FILE_MAX + 1U]; app_config_t base; app_config_t candidate;
+    uint16_t line = 77U; test_ini_candidate_init(&base); candidate = base;
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_parse_file("", 0U, &base, &candidate, &line));
+    TEST_ASSERT_EQUAL_UINT16(1U, line);
+    memset(file, '#', sizeof(file));
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_parse_file(file, sizeof(file), &base, &candidate, &line));
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_parse_file(NULL, 0U, &base, &candidate, &line));
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_parse_file(file, 0U, NULL, &candidate, &line));
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_parse_file(file, 0U, &base, NULL, &line));
+}
+
 /* PC 测试入口：返回 Unity 失败数供命令行判断。 */
 int main(void)
 {
@@ -705,5 +762,8 @@ int main(void)
     RUN_TEST(test_line_apply_skip_and_arguments);
     RUN_TEST(test_line_apply_raw_input_unchanged);
     RUN_TEST(test_line_apply_rejects_duplicate_key);
+    RUN_TEST(test_parse_file_success);
+    RUN_TEST(test_parse_file_failures);
+    RUN_TEST(test_parse_file_boundaries);
     return UNITY_END();
 }

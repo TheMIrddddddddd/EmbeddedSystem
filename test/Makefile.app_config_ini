@@ -1,8 +1,8 @@
 CC := gcc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -g -O0
-INCLUDES := -I../App/inc -Iunity
+INCLUDES := -Iapp_modbus_stubs -I../App/inc -Iunity
 TARGET ?= /tmp/industrial_app_config_ini_test
-SOURCES := ../App/src/app_config_ini.c unity/unity.c test_app_config_ini.c
+SOURCES := ../App/src/app_config_ini.c ../App/src/app_config.c unity/unity.c test_app_config_ini.c
 
 .PHONY: test
 test:

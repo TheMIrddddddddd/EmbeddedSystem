@@ -112,6 +112,69 @@ app_config_ini_line_status_t app_config_ini_line_apply(
     return APP_CONFIG_INI_LINE_PAIR;
 }
 
+/* 找到下一行，支持 LF/CRLF，拒绝孤立 CR；输入不要求 NUL 终止。 */
+static int app_config_ini_next_line(const char *file, uint16_t length,
+                                    uint16_t offset, uint16_t *line_length,
+                                    uint16_t *next)
+{
+    uint16_t index;
+    for (index = offset; index < length; index++)
+    {
+        if (file[index] == '\r')
+        {
+            if (((index + 1U) >= length) || (file[index + 1U] != '\n')) return 0;
+            *line_length = (uint16_t)(index - offset);
+            *next = (uint16_t)(index + 2U);
+            return 1;
+        }
+        if (file[index] == '\n')
+        {
+            *line_length = (uint16_t)(index - offset);
+            *next = (uint16_t)(index + 1U);
+            return 1;
+        }
+    }
+    *line_length = (uint16_t)(length - offset);
+    *next = length;
+    return 1;
+}
+
+/* 逐行分发完整文件，检查八字段齐全并执行 app_config_validate()。
+ * 所有校验通过后才发布 candidate，确保失败不覆盖调用者配置。
+ */
+int app_config_ini_parse_file(const char *file, uint16_t length,
+                              const app_config_t *base, app_config_t *candidate,
+                              uint16_t *error_line)
+{
+    app_config_t working;
+    app_config_ini_context_t context;
+    uint16_t offset = 0U;
+    uint16_t next;
+    uint16_t line_length;
+    uint16_t line_number = 1U;
+    app_config_ini_line_status_t status;
+    if ((file == NULL) || (base == NULL) || (candidate == NULL) ||
+        (error_line == NULL) || (length > APP_CONFIG_INI_FILE_MAX)) return 0;
+    working = *base;
+    working.reserved[0] = 0U; working.reserved[1] = 0U; working.reserved[2] = 0U;
+    context.candidate = &working; context.seen_mask = 0U;
+    while (offset < length)
+    {
+        if (app_config_ini_next_line(file, length, offset, &line_length, &next) == 0)
+        { *error_line = line_number; return 0; }
+        status = app_config_ini_line_apply(file + offset, line_length, &context);
+        if (status == APP_CONFIG_INI_LINE_ERROR)
+        { *error_line = line_number; return 0; }
+        offset = next; line_number++;
+    }
+    if (context.seen_mask != APP_CONFIG_INI_REQUIRED_MASK)
+    { *error_line = line_number; return 0; }
+    if (app_config_validate(&working) == 0)
+    { *error_line = line_number; return 0; }
+    *candidate = working;
+    return 1;
+}
+
 /* 解析 length 字节的非负十进制片段，语法为整数或整数加 1~6 位小数。
  * maximum 为允许的整数上限；用有界整数保存整数/小数部分，
  * 在 float 舍入前检查 0~maximum 范围，供变比和阈值入口共用。
