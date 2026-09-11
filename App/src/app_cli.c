@@ -8,6 +8,8 @@
 #include "cli.h"
 #include "storage_task.h"
 #include "sample_task.h"
+#include "control_task.h"
+#include "task_events.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -645,7 +647,8 @@ static cli_status_t app_cli_storage_request_start(
     }
     else
     {
-        (void)strcpy(output, "config read pending");
+        (void)strcpy(output, (operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT) ?
+                     "config import pending" : "config read pending");
     }
 
     return CLI_STATUS_OK;
@@ -658,7 +661,8 @@ static void app_cli_print_storage_error(uint8_t operation, uint8_t status)
     uint16_t pos;
 
     operation_text = (operation == STORAGE_TASK_PERSIST_CONFIG_SAVE) ?
-                     "config save" : "config read";
+                     "config save" : ((operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT) ?
+                     "config import" : "config read");
 
     switch (status)
     {
@@ -1208,7 +1212,28 @@ static cli_status_t app_cli_config(int argc, const char *argv[],
             output);
     }
 
+    if (strcmp(argv[1], "import") == 0)
+    {
+        return app_cli_storage_request_start(
+            STORAGE_TASK_PERSIST_CONFIG_IMPORT,
+            output);
+    }
+
     return CLI_STATUS_INVALID_ARGUMENTS;
+}
+
+/* conf 直接触发 TF 卡 config.ini 导入；结果仍由 ControlTask 轮询应用。 */
+static cli_status_t app_cli_conf(int argc, const char *argv[],
+                                 char *output, size_t output_size)
+{
+    (void)argv;
+    (void)output_size;
+    if (argc != 1)
+    {
+        return CLI_STATUS_INVALID_ARGUMENTS;
+    }
+    return app_cli_storage_request_start(
+        STORAGE_TASK_PERSIST_CONFIG_IMPORT, output);
 }
 
 static cli_status_t app_cli_rtc(int argc, const char *argv[],
@@ -1357,6 +1382,18 @@ void app_cli_storage_result_poll(void)
             return;
         }
 
+        if (s_storage_pending_operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT)
+        {
+            if (control_apply_persisted_config(&s_storage_result) == 0U)
+            {
+                (void)app_cli_print("config import: apply error");
+                return;
+            }
+            (void)xEventGroupSetBits(task_events_get(), TASK_EVENT_CONFIG_READY);
+            (void)app_cli_print("config.ini loaded and saved [OK]");
+            return;
+        }
+
         if ((s_storage_result.payload_length != APP_CONFIG_SERIALIZED_SIZE) ||
             (app_config_decode(s_storage_result.payload,
                                s_storage_result.payload_length,
@@ -1391,6 +1428,7 @@ static const cli_command_t s_cli_commands[] =
     { "id",      app_cli_id },
     { "baud",    app_cli_baud },
     { "config",  app_cli_config },
+    { "conf",    app_cli_conf },
     { "rtc",     app_cli_rtc },
     { "test",    app_cli_test }
 };

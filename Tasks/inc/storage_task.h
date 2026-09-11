@@ -132,6 +132,10 @@ int storage_task_file_result_get(storage_task_file_result_t *result, uint32_t ti
 
 int storage_task_persist_request_submit(
     const storage_task_persist_request_t *request);
+/* 提交 TF 卡 config.ini 导入请求，由 StorageTask 读取并保存。 */
+int storage_task_config_import_submit(uint32_t request_id,
+                                      uint32_t deadline_tick,
+                                      uint8_t origin);
 int storage_task_persist_result_get(
     storage_task_persist_result_t *result,
     uint32_t timeout_ms);

@@ -61,7 +61,7 @@ static QueueHandle_t s_storage_file_request_queue_handle;
 static QueueHandle_t s_storage_file_result_queue_handle;
 static storage_task_persist_request_t s_storage_persist_request;
 static storage_task_persist_result_t s_storage_persist_result;
-static uint8_t s_storage_config_file[APP_CONFIG_INI_FILE_MAX];
+static uint8_t s_storage_config_file[APP_CONFIG_INI_FILE_MAX + 1U];
 static uint8_t s_storage_config_encoded[APP_CONFIG_SERIALIZED_SIZE];
 static FATFS s_storage_fatfs;
 static volatile FRESULT s_storage_fatfs_mount_result = FR_NOT_READY;
@@ -799,6 +799,20 @@ int storage_task_persist_request_submit(
     }
 
     return 1;
+}
+
+/* 构造并提交 config.ini 导入请求，避免上层复制操作码和队列约束。 */
+int storage_task_config_import_submit(uint32_t request_id,
+                                      uint32_t deadline_tick,
+                                      uint8_t origin)
+{
+    storage_task_persist_request_t request;
+    (void)memset(&request, 0, sizeof(request));
+    request.request_id = request_id;
+    request.deadline_tick = deadline_tick;
+    request.operation = STORAGE_TASK_PERSIST_CONFIG_IMPORT;
+    request.origin = origin;
+    return storage_task_persist_request_submit(&request);
 }
 
 int storage_task_persist_result_get(

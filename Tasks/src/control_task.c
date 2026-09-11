@@ -366,7 +366,7 @@ static void control_execute_protocol_request(
     }
 }
 
-static uint8_t control_apply_persisted_config(
+int control_apply_persisted_config(
     const storage_task_persist_result_t *result)
 {
     app_config_t config;
