@@ -4,6 +4,8 @@
 #include "sample_task.h"
 #include <string.h>
 
+extern int app_config_sample_period_key_set(uint16_t key_id);
+
 static sample_snapshot_t snapshot;
 static float ratios[2];
 static unsigned depth, snapshot_reads;
@@ -233,6 +235,27 @@ static void test_modbus_mode_id_guard(void)
     TEST_ASSERT_EQUAL_INT(1, app_config_device_id_set(248));
     TEST_ASSERT_EQUAL_INT(0, app_config_protocol_mode_set(1));
 }
+
+static void test_sample_period_key_mapping(void)
+{
+    app_config_t c;
+
+    TEST_ASSERT_EQUAL_INT(1, app_config_sample_period_key_set(2U));
+    app_config_get(&c);
+    TEST_ASSERT_EQUAL_UINT8(5U, c.sample_period_s);
+
+    TEST_ASSERT_EQUAL_INT(1, app_config_sample_period_key_set(3U));
+    app_config_get(&c);
+    TEST_ASSERT_EQUAL_UINT8(10U, c.sample_period_s);
+
+    TEST_ASSERT_EQUAL_INT(1, app_config_sample_period_key_set(4U));
+    app_config_get(&c);
+    TEST_ASSERT_EQUAL_UINT8(15U, c.sample_period_s);
+
+    TEST_ASSERT_EQUAL_INT(0, app_config_sample_period_key_set(1U));
+    TEST_ASSERT_EQUAL_INT(0, app_config_sample_period_key_set(5U));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -251,5 +274,6 @@ int main(void)
     RUN_TEST(test_broadcast_policy);
     RUN_TEST(test_routing_and_null);
     RUN_TEST(test_modbus_mode_id_guard);
+    RUN_TEST(test_sample_period_key_mapping);
     return UNITY_END();
 }

@@ -34,6 +34,7 @@ int app_config_init(void);
 int app_config_get(app_config_t *out);
 int app_config_device_id_set(uint16_t device_id);
 int app_config_sample_period_set(uint8_t seconds);
+int app_config_sample_period_key_set(uint16_t key_id);
 int app_config_protocol_mode_set(uint8_t mode);
 int app_config_alarm_mode_set(uint8_t mode);
 int app_config_baudrate_set(uint32_t baudrate);

@@ -428,7 +428,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 1. ADC/DMA 100ms 常驻采集 + 3 次均值滤波,写入共享区(采集引擎常驻,《01》十三-5);
 2. DAC 输出 PA4 → 跳线 PC1 回读,打通输出-采集闭环(《02》3.4);
-3. 基于 M3 已完成的 USART0 BSP 实现 CLI 全部指令(test / rtc config / rtc now / conf / ratio / limit / config save|read / protocol / id / baud / start / stop / hide / unhide / help),CLI 解析在 ControlTask 上下文,ISR 只收数据入队(《01》四-5);
+3. 基于 M3 已完成的 USART0 BSP 实现 M4 运行时 CLI 指令(test / rtc config / rtc now / ratio / limit / protocol / id / baud / start / stop / hide / unhide / help),CLI 解析在 ControlTask 上下文,ISR 只收数据入队;`conf` 与 `config save|read` 的文件导入和持久化归 M5(《01》四-5);
 4. 基于 M3 已完成的 USART1/PA1 RS485 链路实现自定义二进制帧协议(帧格式/CRC16/应答超时/序列号,《01》七章);
 5. Modbus RTU 从站(03/04/06/10 功能码,寄存器映射《01》八章),`protocol_mode` 切换;
 6. **Python 回归测试脚本同步进场**:串口发帧/收帧/断言,覆盖正常帧 + 错误帧 + 异常帧。
@@ -437,9 +437,9 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **风险点:** USART IDLE 中断不保证帧边界,半帧/多帧必须由 RingBuffer 解析器消化(《02》3.1 注意事项)。
 
-**M4 执行进度(更新于 2026-09-09):**
+**M4 执行进度(更新于 2026-09-11):**
 
-- **M4-1b/M4-2/M4-3a/M4-3b 已板测通过**,打包为本地提交 `fa844b4`(M4:完成采样滤波换算与CLI采样控制闭环,18 文件 +1204/-32,未推送)。SampleTask 3 点滑动均值滤波 + 码值→mV→×变比三级换算板上验证(CH1 DAC 回读 1650mV);`FF_CODE_PAGE` 932→437 释放 58.7KB RO-data(LFN 保留,《01》六章长文件名为硬约束);`board_dma_map.h` 收全 4 条 DMA 并带编译期冲突检查(实测有效);CLI 骨架 + start/stop/hide/unhide + 周期采样行 + 超限标注 + LED3 + KEY1 启停,HEX 编码板上解码验证正确。
+- **M4-1b/M4-2/M4-3a/M4-3b 已板测通过**,打包为本地提交 `fa844b4`(M4:完成采样滤波换算与CLI采样控制闭环,18 文件 +1204/-32,未推送)。SampleTask 3 点滑动均值滤波 + 码值→mV→×变比三级换算板上验证(CH1 DAC 回读 1650mV);`FF_CODE_PAGE` 932→437 释放 58.7KB RO-data(LFN 保留,《01》六章长文件名为硬约束);`board_dma_map.h` 收全 4 条 DMA 并带编译期冲突检查(实测有效);CLI 骨架 + start/stop/hide/unhide + 周期采样行 + 超限标注 + LED3 + KEY1 启停 + KEY2/KEY3/KEY4 周期设置,HEX 编码板上解码验证正确。
 - **M4-3c/M4-3d 已板测通过**,打包为本地提交 `ce93854`(M4:完成CLI两段式配置与RTC日历闭环,12 文件 +1230/-145,未推送)。3c:ratio/limit/protocol/id/baud 五个两段式命令(pending 状态机收敛在 app_cli 内部,手写定点/HEX/十进制解析器,不用 strtod),D/E 类验收达成;3d:`BSP/board_rtc.c` LSE 32.768k 非致命初始化——**LSE 起振成功,最大硬件风险解除**,跨午夜日期翻转(C-01 达成),Unix 历法硬校验(2026-09-07 00:00:00 = 0x6A9DFE80)精确命中,`test` 四项自检全 PASS。范围裁定:protocol/id/baud 回复文本不带 `, saved [OK]`(持久化归 M5);`baud` 上电默认 115200(用户裁定,见《02》3.1)。
 - **M4-4a/4b/4c 已板测通过**,打包为本地提交 `31ed947`(M4:完成RS485自定义协议链路与命令分发,15 文件 +1683/-6,未推送)。4a:`Middleware/Protocol/protocol_stream.c` 流式帧解析器(搜帧头/半帧/粘包/噪声前缀/CRC错重同步/坏长度丢弃,坏帧快照供错误应答),PC Unity 86 用例全绿;4b:ProtocolTask 集成——USART1 RX→解析器→类型/地址/重复帧三道过滤→request/result 双队列→ControlTask 经 `app_protocol.c` 业务分发(与 CLI 命令表分离)→编码回发,重复帧命中缓存原样重发,板测 9/9;4c:13 条命令(重启/版本/ID/波特率/DAC/阈值/变比/TF状态/自检)、广播写静默执行(允许表)、忙碌策略框架、K-01/K-02 坏帧错误应答、0x0101 应答后系统复位,板测 27/27。主机端测试工具 `test/rs485_host.py`(拼帧/CRC16-Modbus/自动判定)随步建成。
 - **M4-4d 已板测通过**,打包为本地提交 `a3683cf`(M4:完成自动上报与心跳,RS485 协议链路收官,5 文件 +320/-18,未推送)。0x0302/0x0303/0x0304 自动上报启停与间隔设置;0x0382 事件帧 12B(RTC Unix 时间戳 + CH0/CH1 大端 float,取共享区最新快照),实测 2s 间隔下 2.6s 窗口收到 3 帧;0x8888 心跳上电一次后每 30s,载荷 2B 设备 ID(A-04 达成);忙碌策略通电——上报期间仅放行 0x0303/0x03AA,其余回 0x05(H-02 达成);LED1/2/5 联动补全。板测 35/35 + 心跳全 PASS。
@@ -511,10 +511,12 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 ### M4-5f/M4-6 Python 回归与板级验收（2026-09-11）
 
-- `test/rs485_host.py` 新增 Modbus RTU 主机：COM14 使用 115200 8E1，CRC16-Modbus 低字节先发，支持 03/04/06/10 响应解析、异常响应校验和静默帧检查；新增 `test/test_rs485_host.py`，主机帧单元测试 4/4 通过。
+- `test/rs485_host.py` 新增 Modbus RTU 主机：COM14 使用 115200 8E1，CRC16-Modbus 低字节先发，支持 03/04/06/10 响应解析、异常响应校验和静默帧检查；新增 `test/test_rs485_host.py`，主机帧单元测试 5/5 通过。
 - 端口职责已按实物连接固定：COM9 为 USART0/115200 8N1，用于发送 `protocol` 和模式值；COM14 为 USART1/RS485/115200 8E1，用于 Modbus RTU 和自定义 RS485 协议。测试由 COM9 将 `protocol` 从 0 切换为 1 后开始，Modbus 测试完成后再切回 0。
-- Modbus 功能性板测 `python test/rs485_host.py COM14 modbus`：14/14 通过。覆盖设备 ID、变比和输入寄存器读取，06 原值回显，10 完整 float32 写入与回读，非法变比异常 03 及整批写入原子性，空洞地址异常 02，非法 ID 异常 03，未支持功能码异常 01，错误地址/错误 CRC 静默以及广播合法写静默。实测 ID=1、变比=1.000/1.000、CH0=2.279V、CH1=1.651V。
-- 自定义 RS485 回归 `python test/rs485_host.py COM14 all`：35/35 通过；包含自动上报、上报期间忙碌策略、停止上报、异常帧、DAC/阈值/变比业务、重启恢复。重启后约 5.5s 恢复通信。随后心跳回归收到 1 帧，A-04 设备 ID 一致通过。
+- Modbus 功能性板测 `python test/rs485_host.py COM14 modbus`：14/14 通过。覆盖设备 ID、变比和输入寄存器读取，06 原值回显，10 完整 float32 写入与回读，非法变比异常 03 及整批写入原子性，空洞地址异常 02，非法 ID 异常 03，未支持功能码异常 01，错误地址/错误 CRC 静默以及广播合法写静默。实测 ID=1、变比=1.000/1.000、CH0=2.282V、CH1=1.652V。
+- 自定义 RS485 回归 `python test/rs485_host.py COM14 all`：39/39 通过；新增验证 0x0106 在 115200 与 57600 间切换，确认旧波特率应答完成后再切换，并恢复到 115200。原有自动上报、上报期间忙碌策略、停止上报、异常帧、DAC/阈值/变比业务、重启恢复均通过。重启后约 5.5s 恢复通信。
+- 补缺闭环板测：设备 ID=248 时 CLI 输入 `protocol=1` 返回 `parameter invalid, protocol unchanged` 且仍保持 custom；KEY2/KEY3/KEY4 分别输出并设置 5s/10s/15s；切换 custom↔Modbus 后 Modbus 回归通过。双队列 reset 的 PC 测试 1/1 通过，自定义结果已按 request_id/mode_epoch/protocol_kind 匹配。
+- 随代码变更重新 AC5 构建：ROM=62768B（61.30KiB，47.9%），RAM=28136B（27.48KiB，14.3%）；`cortex-debug.variableUseNaturalFormat=true` 保持。测试结束时设备恢复为 ID=1、115200、自定义协议，采样周期最后设置为 15s；参数仍为运行时生效，持久化继续归 M5。
 - 本次证据覆盖功能性串口收发、模式往返和 O-01 所需 03/06/10（另含 04）板测；未替代逻辑分析仪对亚毫秒 IRQ 延迟、t1.5/t3.5 临界边界的严格线级测量。全部配置仍为运行时生效，持久化继续归 M5。
 
 ## 八、M5:TF 卡与告警

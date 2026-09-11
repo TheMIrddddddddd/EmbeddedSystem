@@ -247,17 +247,25 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
         break;
 
     case APP_PROTOCOL_CMD_SET_BAUD:
-        /* 《01》七-5：应答 OK 后重启生效——这里只存配置，
-         * 不立即改硬件（否则应答还没发完链路就断了）；持久化归 M5 */
+        /* 应答在旧波特率发完后，由 ProtocolTask 再应用硬件参数；持久化归 M5。 */
         if (payload_length != 4U)
         {
             result->status = APP_PROTOCOL_ERROR_LENGTH;
             break;
         }
 
-        if (app_config_baudrate_set(app_protocol_load_u32_be(payload)) == 0)
         {
-            result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
+            uint32_t baudrate = app_protocol_load_u32_be(payload);
+
+            if (app_config_baudrate_set(baudrate) == 0)
+            {
+                result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
+            }
+            else
+            {
+                result->next_baudrate = baudrate;
+                result->apply_flags |= PROTOCOL_RESULT_APPLY_BAUD;
+            }
         }
         break;
 

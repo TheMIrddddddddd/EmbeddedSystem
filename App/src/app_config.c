@@ -101,6 +101,31 @@ int app_config_sample_period_set(uint8_t seconds)
     return 1;
 }
 
+int app_config_sample_period_key_set(uint16_t key_id)
+{
+    uint8_t seconds;
+
+    switch (key_id)
+    {
+    case 2U:
+        seconds = 5U;
+        break;
+
+    case 3U:
+        seconds = 10U;
+        break;
+
+    case 4U:
+        seconds = 15U;
+        break;
+
+    default:
+        return 0;
+    }
+
+    return app_config_sample_period_set(seconds);
+}
+
 int app_config_protocol_mode_set(uint8_t mode)
 {
     int valid;

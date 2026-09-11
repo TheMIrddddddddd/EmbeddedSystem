@@ -571,7 +571,11 @@ static void app_cli_apply_protocol(const char *line)
 
     mode = (uint8_t)(line[0] - '0');
 
-    (void)app_config_protocol_mode_set(mode);
+    if (app_config_protocol_mode_set(mode) == 0)
+    {
+        (void)app_cli_print("parameter invalid, protocol unchanged");
+        return;
+    }
 
     if (mode == 0U)
     {

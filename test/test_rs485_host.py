@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from rs485_host import build_modbus_frame, verify_modbus_response
+from rs485_host import Rs485Host, build_modbus_frame, verify_modbus_response
 
 
 class ModbusHostFrameTests(unittest.TestCase):
@@ -43,6 +43,23 @@ class ModbusHostFrameTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(message, "CRC错误")
         self.assertEqual(data, b"")
+
+    def test_custom_host_can_switch_baudrate(self):
+        class FakeSerial:
+            def __init__(self):
+                self.baudrate = 115200
+                self.reset_count = 0
+
+            def reset_input_buffer(self):
+                self.reset_count += 1
+
+        host = Rs485Host.__new__(Rs485Host)
+        host.ser = FakeSerial()
+
+        host.set_baudrate(57600)
+
+        self.assertEqual(host.ser.baudrate, 57600)
+        self.assertEqual(host.ser.reset_count, 1)
 
 
 if __name__ == "__main__":

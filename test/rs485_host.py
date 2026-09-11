@@ -117,6 +117,11 @@ class Rs485Host:
     def __init__(self, port: str, baud: int = 115200):
         self.ser = serial.Serial(port, baud, timeout=2.0)
 
+    def set_baudrate(self, baudrate: int):
+        """切换主机串口波特率，并丢弃切换前残留输入。"""
+        self.ser.baudrate = baudrate
+        self.ser.reset_input_buffer()
+
     def close(self):
         self.ser.close()
 
@@ -348,6 +353,30 @@ def run_all(host: Rs485Host):
     ok, msg, data = host.verify_response(r, 0x0001, 0x0105, 11)
     baud = struct.unpack(">I", data[:4])[0] if len(data) >= 4 else 0
     check("0x0105 查询波特率", ok and baud == 115200, "%d" % baud)
+
+    # 0x0106：应答仍在旧波特率发送，随后主机和设备一起切换到 57600。
+    r = host.transact(0x0001, 0x0106, 100, struct.pack(">I", 57600))
+    ok, msg, _ = host.verify_response(r, 0x0001, 0x0106, 100)
+    check("0x0106 设置57600并旧速率应答", ok, msg)
+
+    host.set_baudrate(57600)
+    time.sleep(0.05)
+    r = host.transact(0x0001, 0x0105, 101)
+    ok, msg, data = host.verify_response(r, 0x0001, 0x0105, 101)
+    baud = struct.unpack(">I", data[:4])[0] if len(data) >= 4 else 0
+    check("57600下查询波特率", ok and baud == 57600, "%d" % baud)
+
+    # 恢复默认波特率：恢复命令在 57600 下发送和应答。
+    r = host.transact(0x0001, 0x0106, 102, struct.pack(">I", 115200))
+    ok, msg, _ = host.verify_response(r, 0x0001, 0x0106, 102)
+    check("0x0106 恢复115200并旧速率应答", ok, msg)
+
+    host.set_baudrate(115200)
+    time.sleep(0.05)
+    r = host.transact(0x0001, 0x0105, 103)
+    ok, msg, data = host.verify_response(r, 0x0001, 0x0105, 103)
+    baud = struct.unpack(">I", data[:4])[0] if len(data) >= 4 else 0
+    check("恢复115200下查询波特率", ok and baud == 115200, "%d" % baud)
 
     # 写 ID：本机旧地址发送；此后设备在新地址 0x0008 应答
     r = host.transact(0x0001, 0x0104, 12, struct.pack(">H", 0x0008))

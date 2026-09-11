@@ -87,6 +87,19 @@ BaseType_t protocol_request_receive(protocol_request_t *request, TickType_t wait
     );
 }
 
+void protocol_queues_reset(void)
+{
+    if (s_protocol_request_queue_handle != NULL)
+    {
+        (void)xQueueReset(s_protocol_request_queue_handle);
+    }
+
+    if (s_protocol_result_queue_handle != NULL)
+    {
+        (void)xQueueReset(s_protocol_result_queue_handle);
+    }
+}
+
 BaseType_t key_event_send(const key_event_t *event)
 {
     if (event == NULL)

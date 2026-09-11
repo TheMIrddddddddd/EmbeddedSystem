@@ -418,6 +418,26 @@ static void control_task(void *argument)
                 (void)app_config_sample_enable_set(
                     (config.local_sample_enabled != 0U) ? 0U : 1U);
             }
+            else if ((key_event.event == (uint8_t)EBTN_EVT_ONPRESS) &&
+                     (key_event.key_id >= 2U) &&
+                     (key_event.key_id <= 4U))
+            {
+                if (app_config_sample_period_key_set(key_event.key_id) != 0)
+                {
+                    if (key_event.key_id == 2U)
+                    {
+                        (void)app_cli_print("sample period set to 5s");
+                    }
+                    else if (key_event.key_id == 3U)
+                    {
+                        (void)app_cli_print("sample period set to 10s");
+                    }
+                    else
+                    {
+                        (void)app_cli_print("sample period set to 15s");
+                    }
+                }
+            }
         }
 
         if (protocol_request_receive(&protocol_request, 0U) == pdTRUE)

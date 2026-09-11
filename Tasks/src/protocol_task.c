@@ -94,6 +94,8 @@ static void protocol_send_modbus_result(
     const protocol_result_t *result);
 static void protocol_apply_modbus_result(
     const protocol_result_t *result);
+static void protocol_apply_custom_result(
+    const protocol_result_t *result);
 static BaseType_t protocol_result_receive_for_request(
     const protocol_request_t *request,
     protocol_result_t *result);
@@ -238,6 +240,20 @@ static void protocol_apply_modbus_result(const protocol_result_t *result)
         {
             board_usart1_rs485_baudrate_set(result->next_baudrate);
         }
+    }
+}
+
+static void protocol_apply_custom_result(const protocol_result_t *result)
+{
+    if ((result->status != 0U) ||
+        (result->reply_required == 0U))
+    {
+        return;
+    }
+
+    if ((result->apply_flags & PROTOCOL_RESULT_APPLY_BAUD) != 0U)
+    {
+        board_usart1_rs485_baudrate_set(result->next_baudrate);
     }
 }
 
@@ -431,6 +447,9 @@ static void protocol_sync_mode(void)
 
     board_usart1_rs485_rtu_receive_enable(
         (desired_kind == PROTOCOL_KIND_MODBUS) ? 1U : 0U);
+
+    /* 模式切换丢弃旧协议尚未消费的任务间事务。 */
+    protocol_queues_reset();
 
     protocol_stream_init(&s_protocol_stream);
     s_cache_valid = 0U;
@@ -682,8 +701,7 @@ static void protocol_process_frame(const protocol_frame_t *frame)
         return;
     }
 
-    if (protocol_result_receive(&result,
-                                pdMS_TO_TICKS(PROTOCOL_COMPLETION_TIMEOUT_MS)) != pdTRUE)
+    if (protocol_result_receive_for_request(&request, &result) != pdTRUE)
     {
         if (is_broadcast == 0U)
         {
@@ -703,6 +721,7 @@ static void protocol_process_frame(const protocol_frame_t *frame)
     }
 
     protocol_send_result(frame, &result);
+    protocol_apply_custom_result(&result);
 
     /* 0x0101：应答已发完（TC 等待在 BSP 里），留缓冲后复位 */
     if (app_protocol_reboot_pending() != 0U)

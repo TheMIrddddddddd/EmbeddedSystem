@@ -25,7 +25,7 @@ void board_usart1_rs485_init(void);
 
 void board_usart1_rs485_send_buffer(const uint8_t *data, uint16_t length);
 
-/* 运行期修改 RS485 波特率（CLI baud 命令），立即生效 */
+/* 运行期修改 RS485 波特率（CLI 或协议应答完成后），立即生效 */
 void board_usart1_rs485_baudrate_set(uint32_t baudrate);
 
 /* Modbus RTU 接收帧事件返回值 */
