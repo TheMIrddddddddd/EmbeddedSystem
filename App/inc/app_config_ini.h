@@ -52,4 +52,12 @@ int app_config_ini_sample_period_parse(const char *value, uint16_t length,
 int app_config_ini_protocol_mode_parse(const char *value, uint16_t length,
                                       uint8_t *out);
 
+/* 解析已去除空白的十进制告警模式，1=主动上报，2=被动存储。
+ * 允许前导零，value 无需 NUL 终止，length 为 1~LINE_MAX 字节。
+ * 成功返回 1 并写入 out；失败返回 0 且 out 不变；指针须非 NULL。
+ * 此函数只产生候选值，不改变 AlarmTask 行为或运行配置。
+ */
+int app_config_ini_alarm_mode_parse(const char *value, uint16_t length,
+                                   uint8_t *out);
+
 #endif /* APP_CONFIG_INI_H */

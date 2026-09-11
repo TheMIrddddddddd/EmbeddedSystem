@@ -280,6 +280,80 @@ static void test_protocol_mode_from_line(void)
     TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
 }
 
+/* 验证告警模式 1/2 和前导零，成功输出对应模式数值。 */
+static void test_alarm_mode_valid_values(void)
+{
+    const char *values[] = {"1", "2", "01", "02", "0002"};
+    const uint8_t expected[] = {1U, 2U, 1U, 2U, 2U};
+    uint8_t out;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        out = 0xA5U;
+        TEST_ASSERT_EQUAL_INT(1, app_config_ini_alarm_mode_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_UINT8(expected[i], out);
+    }
+}
+
+/* 验证零值、非法模式、括号说明及溢出输入均失败且保持输出。 */
+static void test_alarm_mode_invalid_preserves_output(void)
+{
+    const char *values[] = {"", "0", "00", "3", "10", "12", "257", "258",
+        "65538", "4294967298", "+2", "-1", "2.0", "0x02", "2e0", " 2",
+        "2 ", "0\t2", "2x", "2(01 active / 02 passive)", "2 # comment"};
+    uint8_t out = 0xA5U;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(0, app_config_ini_alarm_mode_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_UINT8(0xA5U, out);
+    }
+}
+
+/* 验证非终止片段、长度界限、全零、嵌入 NUL 与空指针。 */
+static void test_alarm_mode_buffer_arguments(void)
+{
+    const char raw[1] = {'2'};
+    const char nul[2] = {'2', '\0'};
+    char long_value[129];
+    uint8_t out = 0U;
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_alarm_mode_parse(raw, 1U, &out));
+    TEST_ASSERT_EQUAL_UINT8(2U, out);
+    memset(long_value, '0', sizeof(long_value));
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_alarm_mode_parse(long_value, 128U, &out));
+    TEST_ASSERT_EQUAL_UINT8(2U, out);
+    long_value[127] = '1';
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_alarm_mode_parse(long_value, 128U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_alarm_mode_parse(long_value, 129U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_alarm_mode_parse(nul, 2U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_alarm_mode_parse(NULL, 1U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_alarm_mode_parse(raw, 1U, NULL));
+}
+
+/* 串联单行拆分与告警模式解析，确认键名后取值且原始行不变。 */
+static void test_alarm_mode_from_line(void)
+{
+    const char line[] = " \talarm_mode = 02 \t";
+    char before[sizeof(line)];
+    app_config_ini_pair_t pair;
+    uint8_t out = 0U;
+    memcpy(before, line, sizeof(line));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR,
+        app_config_ini_line_parse(line, sizeof(line) - 1U, &pair));
+    TEST_ASSERT_EQUAL_UINT16(10U, pair.key_length);
+    TEST_ASSERT_EQUAL_MEMORY("alarm_mode", line + pair.key_offset, pair.key_length);
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_alarm_mode_parse(
+        line + pair.value_offset, pair.value_length, &out));
+    TEST_ASSERT_EQUAL_UINT8(2U, out);
+    TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
+}
+
 /* PC 测试入口：返回 Unity 失败数供命令行判断。 */
 int main(void)
 {
@@ -300,5 +374,9 @@ int main(void)
     RUN_TEST(test_protocol_mode_invalid_preserves_output);
     RUN_TEST(test_protocol_mode_buffer_arguments);
     RUN_TEST(test_protocol_mode_from_line);
+    RUN_TEST(test_alarm_mode_valid_values);
+    RUN_TEST(test_alarm_mode_invalid_preserves_output);
+    RUN_TEST(test_alarm_mode_buffer_arguments);
+    RUN_TEST(test_alarm_mode_from_line);
     return UNITY_END();
 }

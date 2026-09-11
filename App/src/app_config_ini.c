@@ -1,6 +1,49 @@
 #include "app_config_ini.h"
 #include "app_config.h"
 
+/* 解析 length 字节的十进制告警模式片段，允许前导零。
+ * 逐位限制累计值不超过 2，最后拒绝零值，仅接受 1/2。
+ * 成功写入 out 并返回 1；任何失败返回 0，保持 out 原值。
+ * 只产生候选模式，不修改运行配置，不访问 AlarmTask 或存储。
+ */
+int app_config_ini_alarm_mode_parse(const char *value, uint16_t length,
+                                   uint8_t *out)
+{
+    uint16_t parsed;
+    uint16_t index;
+    char current;
+
+    if ((value == 0) || (out == 0) || (length == 0U) ||
+        (length > APP_CONFIG_INI_LINE_MAX))
+    {
+        return 0;
+    }
+
+    parsed = 0U;
+    for (index = 0U; index < length; index++)
+    {
+        current = value[index];
+        if ((current < '0') || (current > '9'))
+        {
+            return 0;
+        }
+        /* 上轮 parsed <= 2，本次累计最大 29，不会发生整数溢出。 */
+        parsed = (uint16_t)(parsed * 10U + (uint16_t)(current - '0'));
+        if (parsed > 2U)
+        {
+            return 0;
+        }
+    }
+
+    if (parsed == 0U)
+    {
+        return 0;
+    }
+
+    *out = (uint8_t)parsed;
+    return 1;
+}
+
 /* 解析 length 字节的十进制协议模式片段，允许前导零。
  * 逐位检查数字并限制累计值为 0/1，避免大整数窄化为合法模式。
  * 成功写出模式并返回 1；无效参数/格式/值返回 0，out 保持不变。
