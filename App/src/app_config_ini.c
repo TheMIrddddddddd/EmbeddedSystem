@@ -1,6 +1,84 @@
 #include "app_config_ini.h"
 #include "app_config.h"
 
+/* 解析 length 字节的变比片段，语法为整数或整数加 1~6 位小数。
+ * 用有界整数保存整数/小数部分，在 float 舍入前检查 0~100 范围。
+ * 成功转换为 float 写入 out 并返回 1；失败返回 0 且 out 不变。
+ * value 无需 NUL 终止；不选择通道，不修改运行配置或访问存储。
+ */
+int app_config_ini_ratio_parse(const char *value, uint16_t length, float *out)
+{
+    uint16_t index;
+    uint16_t decimal_digits;
+    uint32_t integer_part;
+    uint32_t fraction_part;
+    uint32_t scale;
+    char current;
+
+    if ((value == 0) || (out == 0) || (length == 0U) ||
+        (length > APP_CONFIG_INI_LINE_MAX))
+    {
+        return 0;
+    }
+
+    index = 0U;
+    integer_part = 0U;
+    while ((index < length) && (value[index] != '.'))
+    {
+        current = value[index];
+        if ((current < '0') || (current > '9'))
+        {
+            return 0;
+        }
+        /* 上轮整数部分 <= 100，本次最大 1009，不会溢出。 */
+        integer_part = integer_part * 10U + (uint32_t)(current - '0');
+        if (integer_part > (uint32_t)APP_CONFIG_RATIO_MAX)
+        {
+            return 0;
+        }
+        index++;
+    }
+    if (index == 0U)
+    {
+        return 0;
+    }
+
+    fraction_part = 0U;
+    scale = 1U;
+    if (index < length)
+    {
+        index++;
+        decimal_digits = 0U;
+        while (index < length)
+        {
+            current = value[index];
+            if ((current < '0') || (current > '9') || (decimal_digits >= 6U))
+            {
+                return 0;
+            }
+            /* 最多六位，fraction_part <= 999999，scale <= 1000000。 */
+            fraction_part = fraction_part * 10U + (uint32_t)(current - '0');
+            scale *= 10U;
+            decimal_digits++;
+            index++;
+        }
+        if (decimal_digits == 0U)
+        {
+            return 0;
+        }
+    }
+
+    /* 100 后只能带全零小数；必须在浮点转换前拒绝微小越界。 */
+    if ((integer_part == (uint32_t)APP_CONFIG_RATIO_MAX) &&
+        (fraction_part != 0U))
+    {
+        return 0;
+    }
+
+    *out = (float)integer_part + (float)fraction_part / (float)scale;
+    return 1;
+}
+
 /* 解析 length 字节的十进制告警模式片段，允许前导零。
  * 逐位限制累计值不超过 2，最后拒绝零值，仅接受 1/2。
  * 成功写入 out 并返回 1；任何失败返回 0，保持 out 原值。

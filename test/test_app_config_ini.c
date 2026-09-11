@@ -354,6 +354,81 @@ static void test_alarm_mode_from_line(void)
     TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
 }
 
+/* 验证整数、小数、前导零及 0/100 边界，按 float32 精度比较结果。 */
+static void test_ratio_valid_values(void)
+{
+    const char *values[] = {"0", "100", "1", "1.25", "0002.50",
+        "0.000001", "12.345678", "99.999999", "100.000000", "000.000000"};
+    const float expected[] = {0.0f, 100.0f, 1.0f, 1.25f, 2.5f,
+        0.000001f, 12.345678f, 99.999999f, 100.0f, 0.0f};
+    float out;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        out = -1.0f;
+        TEST_ASSERT_EQUAL_INT(1, app_config_ini_ratio_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_FLOAT(expected[i], out);
+    }
+}
+
+/* 验证越界值在转 float 前被拒绝，语法错误及超长小数保持原输出。 */
+static void test_ratio_invalid_preserves_output(void)
+{
+    const char *values[] = {"", "101", "100.000001", "100.1", "4294967296",
+        "-0", "-1", "+1", "1e0", "NaN", "Inf", "inf", ".5", "1.", ".",
+        "1.2.3", "1,5", "0x10", "1.0000000", "0.0000001", " 1", "1 ",
+        "1\t2", "1\r", "1\n", "1.25x", "1.0 # comment"};
+    float out = 7.25f;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(0, app_config_ini_ratio_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_FLOAT(7.25f, out);
+    }
+}
+
+/* 验证非终止片段、128/129 字节长度、嵌入 NUL 及无效指针。 */
+static void test_ratio_buffer_arguments(void)
+{
+    const char raw[4] = {'1', '.', '2', '5'};
+    const char nul[4] = {'1', '.', '\0', '5'};
+    char long_value[129];
+    float out = 0.0f;
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_ratio_parse(raw, 4U, &out));
+    TEST_ASSERT_EQUAL_FLOAT(1.25f, out);
+    memset(long_value, '0', sizeof(long_value));
+    long_value[127] = '1';
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_ratio_parse(long_value, 128U, &out));
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_ratio_parse(long_value, 129U, &out));
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_ratio_parse(nul, 4U, &out));
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_ratio_parse(NULL, 1U, &out));
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_ratio_parse(raw, 4U, NULL));
+}
+
+/* 串联单行拆分和单值变比解析，确认键名后取值，原始文本保持不变。 */
+static void test_ratio_from_line(void)
+{
+    const char line[] = " \tch0_ratio = 002.50 \t";
+    char before[sizeof(line)];
+    app_config_ini_pair_t pair;
+    float out = 0.0f;
+    memcpy(before, line, sizeof(line));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR,
+        app_config_ini_line_parse(line, sizeof(line) - 1U, &pair));
+    TEST_ASSERT_EQUAL_UINT16(9U, pair.key_length);
+    TEST_ASSERT_EQUAL_MEMORY("ch0_ratio", line + pair.key_offset, pair.key_length);
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_ratio_parse(
+        line + pair.value_offset, pair.value_length, &out));
+    TEST_ASSERT_EQUAL_FLOAT(2.5f, out);
+    TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
+}
+
 /* PC 测试入口：返回 Unity 失败数供命令行判断。 */
 int main(void)
 {
@@ -378,5 +453,9 @@ int main(void)
     RUN_TEST(test_alarm_mode_invalid_preserves_output);
     RUN_TEST(test_alarm_mode_buffer_arguments);
     RUN_TEST(test_alarm_mode_from_line);
+    RUN_TEST(test_ratio_valid_values);
+    RUN_TEST(test_ratio_invalid_preserves_output);
+    RUN_TEST(test_ratio_buffer_arguments);
+    RUN_TEST(test_ratio_from_line);
     return UNITY_END();
 }

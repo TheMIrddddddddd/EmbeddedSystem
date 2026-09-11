@@ -60,4 +60,12 @@ int app_config_ini_protocol_mode_parse(const char *value, uint16_t length,
 int app_config_ini_alarm_mode_parse(const char *value, uint16_t length,
                                    uint8_t *out);
 
+/* 解析已去除空白的变比值：十进制整数或带 1~6 位小数，范围 0~100。
+ * 允许前导零，不接受符号、指数或省略整数/小数位的写法。
+ * value 无需 NUL 终止，length 为 1~LINE_MAX 字节，指针须非 NULL。
+ * 先精确检查十进制值域，再转换为 float；成功返回 1 并写 out，
+ * 失败返回 0 且 out 不变。本函数不选通道、不修改运行配置。
+ */
+int app_config_ini_ratio_parse(const char *value, uint16_t length, float *out);
+
 #endif /* APP_CONFIG_INI_H */
