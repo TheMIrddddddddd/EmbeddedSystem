@@ -97,6 +97,8 @@ virtualFolder:
             - path: ../App/src/gd32f4xx_it.c
             - path: ../App/src/freertos_static.c
             - path: ../App/src/app_config.c
+            - path: ../App/src/app_config_ini.c
+            - path: ../App/src/app_config_import.c
             - path: ../App/src/app_cli.c
             - path: ../App/src/app_protocol.c
             - path: ../App/src/app_modbus.c
