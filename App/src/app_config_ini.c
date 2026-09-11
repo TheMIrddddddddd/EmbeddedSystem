@@ -1,6 +1,44 @@
 #include "app_config_ini.h"
 #include "app_config.h"
 
+/* 解析 length 字节的十进制协议模式片段，允许前导零。
+ * 逐位检查数字并限制累计值为 0/1，避免大整数窄化为合法模式。
+ * 成功写出模式并返回 1；无效参数/格式/值返回 0，out 保持不变。
+ * 此处只产生候选值，不切换硬件协议，也不检查设备 ID 联合约束。
+ */
+int app_config_ini_protocol_mode_parse(const char *value, uint16_t length,
+                                      uint8_t *out)
+{
+    uint16_t parsed;
+    uint16_t index;
+    char current;
+
+    if ((value == 0) || (out == 0) || (length == 0U) ||
+        (length > APP_CONFIG_INI_LINE_MAX))
+    {
+        return 0;
+    }
+
+    parsed = 0U;
+    for (index = 0U; index < length; index++)
+    {
+        current = value[index];
+        if ((current < '0') || (current > '9'))
+        {
+            return 0;
+        }
+        /* 上轮 parsed <= 1，本次累计最大 19，不会发生整数溢出。 */
+        parsed = (uint16_t)(parsed * 10U + (uint16_t)(current - '0'));
+        if (parsed > 1U)
+        {
+            return 0;
+        }
+    }
+
+    *out = (uint8_t)parsed;
+    return 1;
+}
+
 /* 解析 length 字节的十进制周期片段，允许前导零，不接受符号或空白。
  * 用局部 uint16_t 累计并逐位限制上限，避免整数溢出或窄化回绕。
  * 仅数值 5/10/15 成功，成功写入 out 并返回 1；失败返回 0 且 out 不变。

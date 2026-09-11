@@ -44,4 +44,12 @@ int app_config_ini_device_id_parse(const char *value, uint16_t length,
 int app_config_ini_sample_period_parse(const char *value, uint16_t length,
                                       uint8_t *out);
 
+/* 解析已去除空白的十进制协议模式，0=自定义协议，1=Modbus RTU。
+ * 允许前导零，value 无需 NUL 终止，length 为 1~LINE_MAX 字节。
+ * 成功返回 1 并写入 out；失败返回 0 且 out 不变；指针须非 NULL。
+ * 此函数不切换协议，设备 ID 与模式的联合约束由完整配置校验负责。
+ */
+int app_config_ini_protocol_mode_parse(const char *value, uint16_t length,
+                                      uint8_t *out);
+
 #endif /* APP_CONFIG_INI_H */

@@ -207,6 +207,79 @@ static void test_sample_period_from_line(void)
     TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
 }
 
+/* 验证协议模式 0/1 及前导零，零值必须作为有效配置接受。 */
+static void test_protocol_mode_valid_values(void)
+{
+    const char *values[] = {"0", "1", "00", "01", "0001"};
+    const uint8_t expected[] = {0U, 1U, 0U, 1U, 1U};
+    uint8_t out;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        out = 0xA5U;
+        TEST_ASSERT_EQUAL_INT(1, app_config_ini_protocol_mode_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_UINT8(expected[i], out);
+    }
+}
+
+/* 验证非法模式、尾随字符及大整数被拒绝，失败保持原输出。 */
+static void test_protocol_mode_invalid_preserves_output(void)
+{
+    const char *values[] = {"", "2", "10", "11", "256", "257", "65537",
+        "4294967297", "+1", "-0", "1.0", "0x01", "1e0", " 1", "1 ", "0\t1", "1x"};
+    uint8_t out = 0xA5U;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(0, app_config_ini_protocol_mode_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_UINT8(0xA5U, out);
+    }
+}
+
+/* 验证非终止输入、128/129 字节界限、嵌入 NUL 及空指针。 */
+static void test_protocol_mode_buffer_arguments(void)
+{
+    const char raw[1] = {'1'};
+    const char nul[2] = {'1', '\0'};
+    char long_value[129];
+    uint8_t out = 0U;
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_protocol_mode_parse(raw, 1U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    memset(long_value, '0', sizeof(long_value));
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_protocol_mode_parse(long_value, 128U, &out));
+    TEST_ASSERT_EQUAL_UINT8(0U, out);
+    long_value[127] = '1';
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_protocol_mode_parse(long_value, 128U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_protocol_mode_parse(long_value, 129U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_protocol_mode_parse(nul, 2U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_protocol_mode_parse(NULL, 1U, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_protocol_mode_parse(raw, 1U, NULL));
+}
+
+/* 验证单行拆分后确认键名并解析协议值，原始文本保持不变。 */
+static void test_protocol_mode_from_line(void)
+{
+    const char line[] = " \tprotocol_mode = 01 \t";
+    char before[sizeof(line)];
+    app_config_ini_pair_t pair;
+    uint8_t out = 0U;
+    memcpy(before, line, sizeof(line));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR,
+        app_config_ini_line_parse(line, sizeof(line) - 1U, &pair));
+    TEST_ASSERT_EQUAL_UINT16(13U, pair.key_length);
+    TEST_ASSERT_EQUAL_MEMORY("protocol_mode", line + pair.key_offset, pair.key_length);
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_protocol_mode_parse(
+        line + pair.value_offset, pair.value_length, &out));
+    TEST_ASSERT_EQUAL_UINT8(1U, out);
+    TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
+}
+
 /* PC 测试入口：返回 Unity 失败数供命令行判断。 */
 int main(void)
 {
@@ -223,5 +296,9 @@ int main(void)
     RUN_TEST(test_sample_period_invalid_preserves_output);
     RUN_TEST(test_sample_period_buffer_arguments);
     RUN_TEST(test_sample_period_from_line);
+    RUN_TEST(test_protocol_mode_valid_values);
+    RUN_TEST(test_protocol_mode_invalid_preserves_output);
+    RUN_TEST(test_protocol_mode_buffer_arguments);
+    RUN_TEST(test_protocol_mode_from_line);
     return UNITY_END();
 }
