@@ -1,4 +1,5 @@
 #include "storage_task.h"
+#include "storage_persist_queue.h"
 
 #include <stddef.h>
 
@@ -580,6 +581,11 @@ int storage_task_create(void)
         return 0;
     }
 
+    if (storage_persist_queue_init() == 0)
+    {
+        return 0;
+    }
+
     s_storage_task_handle = xTaskCreateStatic(
         storage_task,
         "Storage",
@@ -656,6 +662,53 @@ int storage_task_file_result_get(storage_task_file_result_t *result, uint32_t ti
         return 0;
     }
     return 1;    
+}
+
+int storage_task_persist_request_submit(
+    const storage_task_persist_request_t *request)
+{
+    if (request == NULL)
+    {
+        return 0;
+    }
+
+    if (request->operation > STORAGE_TASK_PERSIST_FLASH_DIAG)
+    {
+        return 0;
+    }
+
+    if (request->payload_length > STORAGE_TASK_PERSIST_PAYLOAD_MAX)
+    {
+        return 0;
+    }
+
+    if (storage_persist_request_send(request) != pdTRUE)
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+int storage_task_persist_result_get(
+    storage_task_persist_result_t *result,
+    uint32_t timeout_ms)
+{
+    TickType_t wait_ticks;
+
+    if (result == NULL)
+    {
+        return 0;
+    }
+
+    wait_ticks = pdMS_TO_TICKS(timeout_ms);
+
+    if (storage_persist_result_receive(result, wait_ticks) != pdTRUE)
+    {
+        return 0;
+    }
+
+    return 1;
 }
 
 int storage_task_request_submit(const storage_task_request_t *request)

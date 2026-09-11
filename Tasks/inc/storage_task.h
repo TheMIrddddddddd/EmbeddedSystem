@@ -6,6 +6,7 @@
 #include "board_sdio.h"
 
 #define STORAGE_TASK_FILE_PATH_MAX      32U
+#define STORAGE_TASK_PERSIST_PAYLOAD_MAX 64U
 
 typedef enum
 {
@@ -82,8 +83,57 @@ typedef struct
     uint32_t transferred;
 } storage_task_file_result_t;
 
+typedef enum
+{
+    STORAGE_TASK_PERSIST_CONFIG_LOAD = 0,
+    STORAGE_TASK_PERSIST_CONFIG_READ,
+    STORAGE_TASK_PERSIST_CONFIG_SAVE,
+    STORAGE_TASK_PERSIST_FLASH_DIAG
+} storage_task_persist_operation_t;
+
+typedef enum
+{
+    STORAGE_TASK_PERSIST_STATUS_OK = 0,
+    STORAGE_TASK_PERSIST_STATUS_INVALID_ARGUMENT,
+    STORAGE_TASK_PERSIST_STATUS_NOT_FOUND,
+    STORAGE_TASK_PERSIST_STATUS_NOT_READY,
+    STORAGE_TASK_PERSIST_STATUS_BUSY,
+    STORAGE_TASK_PERSIST_STATUS_FLASH_ERROR,
+    STORAGE_TASK_PERSIST_STATUS_UNSUPPORTED,
+    STORAGE_TASK_PERSIST_STATUS_DATA_ERROR
+} storage_task_persist_status_t;
+
+#define STORAGE_TASK_PERSIST_ORIGIN_BOOT     1U
+#define STORAGE_TASK_PERSIST_ORIGIN_CONTROL  2U
+#define STORAGE_TASK_PERSIST_ORIGIN_ALARM    3U
+
+typedef struct
+{
+    uint32_t request_id;
+    uint32_t deadline_tick;
+    uint16_t payload_length;
+    uint8_t operation;
+    uint8_t origin;
+    uint8_t payload[STORAGE_TASK_PERSIST_PAYLOAD_MAX];
+} storage_task_persist_request_t;
+
+typedef struct
+{
+    uint32_t request_id;
+    uint16_t payload_length;
+    uint8_t operation;
+    uint8_t status;
+    uint8_t payload[STORAGE_TASK_PERSIST_PAYLOAD_MAX];
+} storage_task_persist_result_t;
+
 int storage_task_file_request_submit(const storage_task_file_request_t *request);
 int storage_task_file_result_get(storage_task_file_result_t *result, uint32_t timeout_ms);
+
+int storage_task_persist_request_submit(
+    const storage_task_persist_request_t *request);
+int storage_task_persist_result_get(
+    storage_task_persist_result_t *result,
+    uint32_t timeout_ms);
 
 int storage_task_create(void);
 
