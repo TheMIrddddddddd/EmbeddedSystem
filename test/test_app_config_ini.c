@@ -139,6 +139,74 @@ static void test_device_id_from_line(void)
     TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
 }
 
+/* 验证三个周期档位与前导零，所有输入按十进制解释。 */
+static void test_sample_period_valid_values(void)
+{
+    const char *values[] = {"5", "10", "15", "005", "010", "00015"};
+    const uint8_t expected[] = {5U, 10U, 15U, 5U, 10U, 15U};
+    uint8_t out;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(1, app_config_ini_sample_period_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_UINT8(expected[i], out);
+    }
+}
+
+/* 验证非法档位、格式及会窄化回绕的整数均失败且不改输出。 */
+static void test_sample_period_invalid_preserves_output(void)
+{
+    const char *values[] = {"", "0", "4", "6", "14", "16", "261", "65541",
+        "4294967301", "+5", "-5", "5.0", "0x05", "5e0", " 5", "5 ", "1\t0", "15x"};
+    uint8_t out = 10U;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(0, app_config_ini_sample_period_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_UINT8(10U, out);
+    }
+}
+
+/* 验证非终止片段、长度上限、嵌入 NUL 与无效参数，失败输出保持。 */
+static void test_sample_period_buffer_arguments(void)
+{
+    const char raw[2] = {'1', '5'};
+    const char nul[2] = {'5', '\0'};
+    char long_value[129];
+    uint8_t out = 0U;
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_sample_period_parse(raw, 2U, &out));
+    TEST_ASSERT_EQUAL_UINT8(15U, out);
+    memset(long_value, '0', sizeof(long_value));
+    long_value[127] = '5';
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_sample_period_parse(long_value, 128U, &out));
+    TEST_ASSERT_EQUAL_UINT8(5U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_sample_period_parse(long_value, 129U, &out));
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_sample_period_parse(nul, 2U, &out));
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_sample_period_parse(NULL, 1U, &out));
+    TEST_ASSERT_EQUAL_UINT8(5U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_sample_period_parse(raw, 2U, NULL));
+}
+
+/* 串联单行拆分与周期转换，确认键名后取值，原始行不被修改。 */
+static void test_sample_period_from_line(void)
+{
+    const char line[] = " \tsample_period = 010 \t";
+    char before[sizeof(line)];
+    app_config_ini_pair_t pair;
+    uint8_t out = 0U;
+    memcpy(before, line, sizeof(line));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR,
+        app_config_ini_line_parse(line, sizeof(line) - 1U, &pair));
+    TEST_ASSERT_EQUAL_UINT16(13U, pair.key_length);
+    TEST_ASSERT_EQUAL_MEMORY("sample_period", line + pair.key_offset, pair.key_length);
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_sample_period_parse(
+        line + pair.value_offset, pair.value_length, &out));
+    TEST_ASSERT_EQUAL_UINT8(10U, out);
+    TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
+}
+
 /* PC 测试入口：返回 Unity 失败数供命令行判断。 */
 int main(void)
 {
@@ -151,5 +219,9 @@ int main(void)
     RUN_TEST(test_device_id_invalid_values_preserve_output);
     RUN_TEST(test_device_id_buffer_arguments);
     RUN_TEST(test_device_id_from_line);
+    RUN_TEST(test_sample_period_valid_values);
+    RUN_TEST(test_sample_period_invalid_preserves_output);
+    RUN_TEST(test_sample_period_buffer_arguments);
+    RUN_TEST(test_sample_period_from_line);
     return UNITY_END();
 }

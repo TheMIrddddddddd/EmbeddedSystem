@@ -37,4 +37,11 @@ app_config_ini_line_status_t app_config_ini_line_parse(
 int app_config_ini_device_id_parse(const char *value, uint16_t length,
                                     uint16_t *out);
 
+/* 解析已去除空白的十进制周期值，仅接受数值 5/10/15，允许前导零。
+ * value 无需 NUL 终止，length 为实际字节数（1~LINE_MAX）。
+ * 成功返回 1 并写入 out；失败返回 0 且 out 不变；两指针须非 NULL。
+ */
+int app_config_ini_sample_period_parse(const char *value, uint16_t length,
+                                      uint8_t *out);
+
 #endif /* APP_CONFIG_INI_H */

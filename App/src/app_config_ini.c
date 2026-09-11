@@ -1,6 +1,49 @@
 #include "app_config_ini.h"
 #include "app_config.h"
 
+/* 解析 length 字节的十进制周期片段，允许前导零，不接受符号或空白。
+ * 用局部 uint16_t 累计并逐位限制上限，避免整数溢出或窄化回绕。
+ * 仅数值 5/10/15 成功，成功写入 out 并返回 1；失败返回 0 且 out 不变。
+ * 本函数仅处理值，不验证键名，不调用运行配置 setter 或访问存储。
+ */
+int app_config_ini_sample_period_parse(const char *value, uint16_t length,
+                                      uint8_t *out)
+{
+    uint16_t parsed;
+    uint16_t index;
+    char current;
+
+    if ((value == 0) || (out == 0) || (length == 0U) ||
+        (length > APP_CONFIG_INI_LINE_MAX))
+    {
+        return 0;
+    }
+
+    parsed = 0U;
+    for (index = 0U; index < length; index++)
+    {
+        current = value[index];
+        if ((current < '0') || (current > '9'))
+        {
+            return 0;
+        }
+        /* 上轮 parsed <= 15，本次累计最大 159，uint16_t 不会溢出。 */
+        parsed = (uint16_t)(parsed * 10U + (uint16_t)(current - '0'));
+        if (parsed > 15U)
+        {
+            return 0;
+        }
+    }
+
+    if ((parsed != 5U) && (parsed != 10U) && (parsed != 15U))
+    {
+        return 0;
+    }
+
+    *out = (uint8_t)parsed;
+    return 1;
+}
+
 /* 解析已去除空白的 4 字节十六进制值；逐字节转换到局部变量。
  * value 无需 NUL 终止，length 必须为 4，out 接收 0001~FFFE。
  * 任一字符或范围非法返回 0；全部通过后才写出并返回 1。
