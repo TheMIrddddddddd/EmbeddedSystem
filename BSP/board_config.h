@@ -2,6 +2,8 @@
 #define BOARD_CONFIG_H
 
 #include "gd32f4xx.h"                   // Device header
+#include "gd32f4xx_rcu.h"
+#include "gd32f4xx_timer.h"
 
 #define BOARD_LED1_PORT          GPIOD
 #define BOARD_LED1_PIN           GPIO_PIN_8
@@ -107,5 +109,12 @@
 #define BOARD_DAC0_OUT0_PIN      GPIO_PIN_4
 
 #define BOARD_ADC_VREF_MV        3300U
+
+#define BOARD_TIMEBASE_TIMER           TIMER1
+#define BOARD_TIMEBASE_TIMER_RCU       RCU_TIMER1
+#define BOARD_TIMEBASE_FREQUENCY_HZ    1000000U
+#define BOARD_TIMEBASE_ALARM_CHANNEL   TIMER_CH_0
+#define BOARD_TIMEBASE_ALARM_IRQ       TIMER1_IRQn
+#define BOARD_TIMEBASE_ALARM_PRIORITY   6U
 
 #endif /* BOARD_CONFIG_H */

@@ -614,6 +614,11 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\board_rtc.c</FilePath>
             </File>
+            <File>
+              <FileName>board_timebase.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_timebase.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -748,6 +753,11 @@
               <FileName>app_protocol.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\src\app_protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\app_modbus.c</FilePath>
             </File>
           </Files>
         </Group>

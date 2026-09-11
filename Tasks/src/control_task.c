@@ -1,4 +1,5 @@
 #include "control_task.h"
+#include <string.h>
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -6,6 +7,7 @@
 #include "app_cli.h"
 #include "app_config.h"
 #include "app_protocol.h"
+#include "app_modbus.h"
 #include "storage_task.h"
 #include "sample_task.h"
 #include "board_usart.h"
@@ -267,11 +269,109 @@ static void control_print_sample_line(const app_config_t *config)
     (void)app_cli_write(s_sample_line_buffer, (uint16_t)(pos + 2U));
 }
 
+static void control_execute_modbus_request(
+    const protocol_request_t *request,
+    protocol_result_t *result)
+{
+    modbus_request_t modbus_request;
+    app_modbus_result_t modbus_result;
+    uint16_t copy_length;
+
+    (void)memset(&modbus_request, 0, sizeof(modbus_request));
+
+    modbus_request.address =
+        (uint8_t)request->device_address;
+    modbus_request.function =
+        (uint8_t)request->operation;
+    modbus_request.exception =
+        request->decode_exception;
+    modbus_request.start_address =
+        request->modbus_start_address;
+    modbus_request.quantity =
+        request->modbus_quantity;
+    modbus_request.value =
+        request->modbus_value;
+
+    if ((request->operation == MODBUS_FUNCTION_WRITE_MULTIPLE) &&
+        (request->payload_length > 0U) &&
+        (request->payload_length <= 255U))
+    {
+        modbus_request.write_data = request->payload;
+        modbus_request.write_byte_count =
+            (uint8_t)request->payload_length;
+    }
+    else
+    {
+        modbus_request.write_data = NULL;
+        modbus_request.write_byte_count = 0U;
+    }
+
+    app_modbus_execute(&modbus_request, &modbus_result);
+
+    (void)memset(result, 0, sizeof(*result));
+
+    result->request_id = request->request_id;
+    result->mode_epoch = request->mode_epoch;
+    result->device_address = request->device_address;
+    result->operation = request->operation;
+    result->protocol_sequence = request->protocol_sequence;
+    result->protocol_kind = PROTOCOL_KIND_MODBUS;
+    result->reply_required = modbus_result.reply_required;
+    result->status = modbus_result.exception;
+    result->next_device_id = modbus_result.next_device_id;
+    result->next_baudrate = modbus_result.next_baudrate;
+    result->apply_flags = PROTOCOL_RESULT_APPLY_NONE;
+
+    if ((modbus_result.apply_flags & APP_MODBUS_APPLY_ID) != 0U)
+    {
+        result->apply_flags |= PROTOCOL_RESULT_APPLY_ID;
+    }
+
+    if ((modbus_result.apply_flags & APP_MODBUS_APPLY_BAUD) != 0U)
+    {
+        result->apply_flags |= PROTOCOL_RESULT_APPLY_BAUD;
+    }
+
+    if (modbus_result.data_length > sizeof(result->payload))
+    {
+        result->status = MODBUS_EXCEPTION_BUSY;
+        result->payload_length = 0U;
+        result->apply_flags = PROTOCOL_RESULT_APPLY_NONE;
+        return;
+    }
+
+    copy_length = (uint16_t)modbus_result.data_length;
+    result->payload_length = copy_length;
+
+    if (copy_length > 0U)
+    {
+        (void)memcpy(result->payload,
+                     modbus_result.data,
+                     copy_length);
+    }
+}
+
+static void control_execute_protocol_request(
+    const protocol_request_t *request,
+    protocol_result_t *result)
+{
+    if (request->protocol_kind == PROTOCOL_KIND_MODBUS)
+    {
+        control_execute_modbus_request(request, result);
+    }
+    else
+    {
+        app_protocol_execute(request, result);
+    }
+}
+
 static void control_task(void *argument)
 {
     key_event_t key_event;
     app_config_t config;
-    protocol_request_t protocol_request;
+    /* ControlTask 独占，静态存放扩容后的队列对象。 */
+    static protocol_request_t protocol_request;
+    static protocol_result_t protocol_result;
     uint8_t sample_was_enabled = 0U;
     TickType_t last_print_tick = 0U;
     uint8_t byte;
@@ -322,9 +422,9 @@ static void control_task(void *argument)
 
         if (protocol_request_receive(&protocol_request, 0U) == pdTRUE)
         {
-            protocol_result_t protocol_result;
-
-            app_protocol_execute(&protocol_request, &protocol_result);
+            control_execute_protocol_request(
+                &protocol_request,
+                &protocol_result);
 
             (void)protocol_result_send(&protocol_result);
         }

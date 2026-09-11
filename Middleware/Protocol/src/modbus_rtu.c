@@ -8,6 +8,12 @@
 #define MODBUS_RTU_CRC_SIZE              2U
 #define MODBUS_RTU_MIN_FRAME_SIZE        4U
 
+static uint16_t modbus_load_u16_be(const uint8_t *data)
+{
+    return (uint16_t)(
+        ((uint16_t)data[0] << 8) |
+        (uint16_t)data[1]);
+}
 modbus_status_t modbus_rtu_encode(uint8_t address,
                                   uint8_t function,
                                   const uint8_t *data,
@@ -128,4 +134,146 @@ modbus_status_t modbus_rtu_decode(const uint8_t *buffer,
     *decoded_length = required_size;
 
     return MODBUS_STATUS_OK;
+}
+
+modbus_status_t modbus_rtu_request_decode(const uint8_t *buffer, size_t length, modbus_request_t *request)
+{
+    modbus_request_t parsed = {0};
+    uint16_t received_crc;
+    uint16_t calculated_crc;
+    uint8_t byte_count;
+
+    if (request == NULL)
+    {
+        return MODBUS_STATUS_NULL_POINTER;
+    }
+
+    *request = parsed;
+
+    if (buffer == NULL)
+    {
+        return MODBUS_STATUS_NULL_POINTER;
+    }
+
+    if (length < MODBUS_RTU_MIN_FRAME_SIZE)
+    {
+        return MODBUS_STATUS_FRAME_TOO_SHORT;
+    }
+
+    if (length > MODBUS_RTU_MAX_ADU_SIZE)
+    {
+        return MODBUS_STATUS_INVALID_LENGTH;
+    }
+
+    received_crc = (uint16_t)((uint16_t)buffer[length - 2U] | ((uint16_t)buffer[length - 1U] << 8));
+    calculated_crc = common_crc16_calc(buffer, (uint32_t)(length - MODBUS_RTU_CRC_SIZE));
+
+    if (received_crc != calculated_crc)
+    {
+        return MODBUS_STATUS_INVALID_CRC;
+    }
+
+    if (buffer[0] > MODBUS_RTU_MAX_SLAVE_ADDRESS)
+    {
+        return MODBUS_STATUS_INVALID_ADDRESS;
+    }
+
+    parsed.address = buffer[0];
+    parsed.function = buffer[1];
+
+    switch (parsed.function)
+    {
+    case MODBUS_FUNCTION_READ_HOLDING:
+    case MODBUS_FUNCTION_READ_INPUT:
+    case MODBUS_FUNCTION_WRITE_SINGLE:
+        if (length != 8U)
+        {
+            return MODBUS_STATUS_INVALID_LENGTH;
+        }
+
+        parsed.start_address = modbus_load_u16_be(&buffer[2]);
+
+        if (parsed.function == MODBUS_FUNCTION_WRITE_SINGLE)
+        {
+            parsed.quantity = 1U;
+            parsed.value = modbus_load_u16_be(&buffer[4]);
+        }
+        else
+        {
+            parsed.quantity = modbus_load_u16_be(&buffer[4]);
+
+            if ((parsed.quantity == 0U) || (parsed.quantity > 125U))
+            {
+                parsed.exception = MODBUS_EXCEPTION_VALUE;
+            }
+        }
+        break;
+
+    case MODBUS_FUNCTION_WRITE_MULTIPLE:
+        if (length < 9U)
+        {
+            return MODBUS_STATUS_INVALID_LENGTH;
+        }
+
+        byte_count = buffer[6];
+
+        if (length != ((size_t)byte_count + 9U))
+        {
+            return MODBUS_STATUS_INVALID_LENGTH;
+        }
+        parsed.start_address = modbus_load_u16_be(&buffer[2]);
+        parsed.quantity = modbus_load_u16_be(&buffer[4]);
+
+        if ((parsed.quantity == 0U) || (parsed.quantity > 123U))
+        {
+            parsed.exception = MODBUS_EXCEPTION_VALUE;
+        }
+        else if ((uint16_t)byte_count != (uint16_t)(parsed.quantity * 2U))
+        {
+            parsed.exception = MODBUS_EXCEPTION_VALUE;
+        }
+        else
+        {
+            parsed.write_data = &buffer[7];
+            parsed.write_byte_count = byte_count;
+        }
+        break;
+
+    default:
+        parsed.exception = MODBUS_EXCEPTION_FUNCTION;
+        break;
+    }
+
+    *request = parsed;
+    return MODBUS_STATUS_OK;
+}
+
+modbus_status_t modbus_rtu_exception_encode(uint8_t address, uint8_t function, uint8_t exception, uint8_t *buffer, size_t buffer_size, size_t *encoded_length)
+{
+    if (encoded_length == NULL)
+    {
+        return MODBUS_STATUS_NULL_POINTER;
+    }
+
+    *encoded_length = 0U;
+
+    if (buffer == NULL)
+    {
+        return MODBUS_STATUS_NULL_POINTER;
+    }
+
+    if ((address == 0U) || (address > MODBUS_RTU_MAX_SLAVE_ADDRESS))
+    {
+        return MODBUS_STATUS_INVALID_ADDRESS;
+    }
+
+    if ((exception != MODBUS_EXCEPTION_FUNCTION) &&
+        (exception != MODBUS_EXCEPTION_ADDRESS) &&
+        (exception != MODBUS_EXCEPTION_VALUE) &&
+        (exception != MODBUS_EXCEPTION_BUSY))
+    {
+        return MODBUS_STATUS_INVALID_FUNCTION;
+    }
+
+    return modbus_rtu_encode(address, (uint8_t)(function | 0x80U), &exception, 1U, buffer, buffer_size, encoded_length);
 }

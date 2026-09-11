@@ -3,6 +3,18 @@
  */
 
 #include "unity.h"
+void test_slave_fixed_read_vector(void);
+void test_slave_read_quantity_boundaries(void);
+void test_slave_write_single_values(void);
+void test_slave_write_multiple_limits_and_payload(void);
+void test_slave_write_multiple_bad_values(void);
+void test_slave_address_and_unknown_function(void);
+void test_slave_invalid_arguments_and_bounds(void);
+void test_slave_crc_corruption_and_order(void);
+void test_slave_structure_lengths(void);
+void test_slave_rejects_concatenated_frames(void);
+void test_slave_exception_fixed_vector(void);
+void test_slave_exception_codes_and_arguments(void);
 
 void setUp(void)
 {
@@ -103,6 +115,18 @@ void test_upgrade_meta_rejects_invalid_commit_marker(void);
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_slave_fixed_read_vector);
+    RUN_TEST(test_slave_read_quantity_boundaries);
+    RUN_TEST(test_slave_write_single_values);
+    RUN_TEST(test_slave_write_multiple_limits_and_payload);
+    RUN_TEST(test_slave_write_multiple_bad_values);
+    RUN_TEST(test_slave_address_and_unknown_function);
+    RUN_TEST(test_slave_invalid_arguments_and_bounds);
+    RUN_TEST(test_slave_crc_corruption_and_order);
+    RUN_TEST(test_slave_structure_lengths);
+    RUN_TEST(test_slave_rejects_concatenated_frames);
+    RUN_TEST(test_slave_exception_fixed_vector);
+    RUN_TEST(test_slave_exception_codes_and_arguments);
 
     RUN_TEST(test_crc16_standard_vector);
     RUN_TEST(test_crc16_empty);

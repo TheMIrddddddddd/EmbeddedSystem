@@ -58,18 +58,29 @@ int app_config_get(app_config_t *out)
 
 int app_config_device_id_set(uint16_t device_id)
 {
+    int valid;
+
     if ((device_id < APP_CONFIG_DEVICE_ID_MIN) ||
         (device_id > APP_CONFIG_DEVICE_ID_MAX))
     {
         return 0;
     }
- 
+
     taskENTER_CRITICAL();
- 
+
+    valid = ((s_app_config.protocol_mode == 0U) ||
+             (device_id <= APP_CONFIG_MODBUS_DEVICE_ID_MAX)) ? 1 : 0;
+
+    if (valid == 0)
+    {
+        taskEXIT_CRITICAL();
+        return 0;
+    }
+
     s_app_config.device_id = device_id;
- 
+
     taskEXIT_CRITICAL();
- 
+
     return 1;
 }
 
@@ -92,17 +103,29 @@ int app_config_sample_period_set(uint8_t seconds)
 
 int app_config_protocol_mode_set(uint8_t mode)
 {
+    int valid;
+
     if (mode > 1U)
     {
         return 0;
     }
- 
+
     taskENTER_CRITICAL();
- 
+
+    valid = ((mode == 0U) ||
+             ((s_app_config.device_id != 0U) &&
+              (s_app_config.device_id <= APP_CONFIG_MODBUS_DEVICE_ID_MAX))) ? 1 : 0;
+
+    if (valid == 0)
+    {
+        taskEXIT_CRITICAL();
+        return 0;
+    }
+
     s_app_config.protocol_mode = mode;
- 
+
     taskEXIT_CRITICAL();
- 
+
     return 1;
 }
 

@@ -186,7 +186,14 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
     uint16_t payload_length = request->payload_length;
     const uint8_t *payload = request->payload;
 
+    (void)memset(result, 0, sizeof(*result));
     result->request_id = request->request_id;
+    result->mode_epoch = request->mode_epoch;
+    result->device_address = request->device_address;
+    result->operation = request->operation;
+    result->protocol_kind = request->protocol_kind;
+    result->reply_required = (request->device_address == 0xFFFFU) ? 0U : 1U;
+    result->apply_flags = PROTOCOL_RESULT_APPLY_NONE;
     result->protocol_sequence = request->protocol_sequence;
     result->status = APP_PROTOCOL_STATUS_OK;
     result->payload_length = 0U;

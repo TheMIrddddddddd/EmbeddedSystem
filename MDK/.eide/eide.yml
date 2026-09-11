@@ -62,6 +62,7 @@ virtualFolder:
         - path: ../BSP/board_adc.c
         - path: ../BSP/board_dac.c
         - path: ../BSP/board_rtc.c
+        - path: ../BSP/board_timebase.c
       folders: []
     - name: Middleware
       files:
@@ -98,6 +99,7 @@ virtualFolder:
             - path: ../App/src/app_config.c
             - path: ../App/src/app_cli.c
             - path: ../App/src/app_protocol.c
+            - path: ../App/src/app_modbus.c
           folders: []
         - name: config
           files:

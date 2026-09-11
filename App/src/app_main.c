@@ -17,6 +17,7 @@
 #include "board_adc.h"
 #include "board_dac.h"
 #include "board_rtc.h"
+#include "board_timebase.h"
 #include "common_flash_layout.h"
 
 int main(void)
@@ -29,6 +30,15 @@ int main(void)
     __ISB();
 
     nvic_priority_group_set(NVIC_PRIGROUP_PRE4_SUB0);
+
+    if (board_timebase_init() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
 
     board_led_init();
     board_key_init();

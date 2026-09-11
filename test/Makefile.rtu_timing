@@ -1,0 +1,8 @@
+CC := gcc
+CFLAGS := -std=c99 -Wall -Wextra -Werror -g -O2
+.PHONY: test
+test:
+	$(CC) $(CFLAGS) -I../BSP test_rtu_timing.c -o /tmp/industrial_rtu_timing_test
+	/tmp/industrial_rtu_timing_test
+	$(CC) $(CFLAGS) -Wno-unused-parameter -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-unknown-pragmas -DGD32F470 -ffunction-sections -fdata-sections -I../BSP -I../App/inc -I../MDK -I../Driver/CMSIS -I../Driver/CMSIS/GD/GD32F4xx/Include -I../Libraries/Include -I../Middleware/Ringbuffer/inc test_rtu_rx.c ../Middleware/Ringbuffer/src/ringbuffer.c -Wl,--gc-sections -o /tmp/industrial_rtu_rx_test
+	/tmp/industrial_rtu_rx_test
