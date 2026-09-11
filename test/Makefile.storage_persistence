@@ -1,0 +1,15 @@
+CC := gcc
+CFLAGS := -std=c99 -Wall -Wextra -Werror -g -O0
+INCLUDES := -Istorage_persistence_stubs -Iapp_modbus_stubs -I../App/inc -I../BSP -I../Tasks/inc -I../Common/inc -I../Middleware/FlashKV/inc -Iunity
+TARGET ?= /tmp/industrial_storage_persistence_test
+SOURCES := ../Tasks/src/storage_persistence.c \
+           ../App/src/app_config.c \
+           ../Middleware/FlashKV/src/flash_kv.c \
+           ../Common/src/common_crc.c \
+           unity/unity.c \
+           test_storage_persistence.c
+
+.PHONY: test
+test:
+	$(CC) $(CFLAGS) $(INCLUDES) $(SOURCES) -o $(TARGET)
+	$(TARGET)

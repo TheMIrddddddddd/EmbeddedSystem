@@ -1,5 +1,6 @@
 #include "storage_task.h"
 #include "storage_persist_queue.h"
+#include "storage_persistence.h"
 
 #include <stddef.h>
 
@@ -55,6 +56,8 @@ static QueueHandle_t s_storage_request_queue_handle;
 static QueueHandle_t s_storage_result_queue_handle;
 static QueueHandle_t s_storage_file_request_queue_handle;
 static QueueHandle_t s_storage_file_result_queue_handle;
+static storage_task_persist_request_t s_storage_persist_request;
+static storage_task_persist_result_t s_storage_persist_result;
 static FATFS s_storage_fatfs;
 static volatile FRESULT s_storage_fatfs_mount_result = FR_NOT_READY;
 static volatile uint8_t s_storage_fatfs_mounted;
@@ -480,12 +483,29 @@ send_result:
     storage_task_file_result_send(request.request_id, result, transferred);
 }
 
+static void storage_task_process_persist_request(void)
+{
+    if (storage_persist_request_receive(&s_storage_persist_request, 0U) != pdPASS)
+    {
+        return;
+    }
+
+    if (storage_persistence_request_handle(&s_storage_persist_request,
+                                           &s_storage_persist_result) == 0)
+    {
+        return;
+    }
+
+    (void)storage_persist_result_send(&s_storage_persist_result);
+}
+
 static void storage_task(void *argument)
 {
     uint32_t notification_value;
 
     (void)argument;
 
+    (void)storage_persistence_init();
     storage_sdio_initialize();
     storage_fatfs_mount();
 
@@ -513,6 +533,7 @@ static void storage_task(void *argument)
 
         storage_task_process_request();
         storage_task_process_file_request();
+        storage_task_process_persist_request();
 
         s_storage_task_sdio_diag.dma_irq_events =
             s_storage_task_dma_irq_events;
