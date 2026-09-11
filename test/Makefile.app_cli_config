@@ -1,0 +1,14 @@
+CC := gcc
+CFLAGS := -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -g -O0
+INCLUDES := -Iapp_cli_stubs -I../App/inc -I../BSP -I../Tasks/inc -I../Middleware/CLI/inc -Iunity
+TARGET ?= /tmp/industrial_app_cli_config_test
+SOURCES := ../App/src/app_cli.c \
+           ../App/src/app_config.c \
+           ../Middleware/CLI/src/cli.c \
+           unity/unity.c \
+           test_app_cli_config.c
+
+.PHONY: test
+test:
+	$(CC) $(CFLAGS) $(INCLUDES) $(SOURCES) -o $(TARGET)
+	$(TARGET)

@@ -32,6 +32,9 @@ void app_cli_banner_print(void);
  */
 void app_cli_execute_line(const char *line);
 
+/* ControlTask 周期调用：处理 config save/read 的异步完成消息。 */
+void app_cli_storage_result_poll(void);
+
 /*
  * 文本格式化 helper（M4-3c 起由 app_cli 统一提供，ControlTask 共用，
  * 避免 snprintf 拉入浮点格式化库）。均返回写入字符数。

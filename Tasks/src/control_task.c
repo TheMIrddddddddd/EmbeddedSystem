@@ -444,6 +444,8 @@ static void control_task(void *argument)
             cli_line_process_byte(byte);
         }
 
+        app_cli_storage_result_poll();
+
         (void)app_config_get(&config);
 
         if (config.local_sample_enabled != 0U)
