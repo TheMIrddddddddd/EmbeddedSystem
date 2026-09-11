@@ -2,6 +2,7 @@
 #define APP_CONFIG_INI_H
 
 #include <stdint.h>
+#include "app_config.h"
 
 #define APP_CONFIG_INI_LINE_MAX 128U
 
@@ -75,5 +76,14 @@ int app_config_ini_ratio_parse(const char *value, uint16_t length, float *out);
  * 此函数不选通道、不修改运行配置；十进制值域在浮点转换前检查。
  */
 int app_config_ini_limit_parse(const char *value, uint16_t length, float *out);
+
+/* 解析一行并将一个字段写入调用者独占的临时配置 candidate。
+ * line 为不含 CR/LF 的 length 字节（无需 NUL 终止），不与 candidate 重叠。
+ * PAIR 表示对应字段已更新；SKIP/ERROR 时 candidate 完全不变。
+ * 仅接受契约的 8 个键，大小写敏感；不调用 app_config_apply/setter。
+ * 不检查重复/缺失键及跨字段约束，调用者须在文件解析完毕后整组校验。
+ */
+app_config_ini_line_status_t app_config_ini_line_apply(
+    const char *line, uint16_t length, app_config_t *candidate);
 
 #endif /* APP_CONFIG_INI_H */

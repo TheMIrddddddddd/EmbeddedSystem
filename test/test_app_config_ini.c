@@ -504,6 +504,138 @@ static void test_limit_from_line(void)
     TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
 }
 
+/* 构造字段互异的候选配置，便于检测通道错写及非目标字段被覆盖。 */
+static void test_ini_candidate_init(app_config_t *config)
+{
+    memset(config, 0, sizeof(*config));
+    config->device_id = 0x0123U;
+    config->sample_period_s = 5U;
+    config->protocol_mode = 0U;
+    config->alarm_mode = 2U;
+    config->local_sample_enabled = 1U;
+    config->hide_mode = 1U;
+    config->rs485_baudrate = 57600U;
+    config->ratio[0] = 1.25f;
+    config->ratio[1] = 2.5f;
+    config->limit[0] = 123.5f;
+    config->limit[1] = 456.5f;
+}
+
+/* 按语义比较全部配置字段，不依赖结构体 padding。 */
+static void test_ini_candidate_equal(const app_config_t *expected,
+                                     const app_config_t *actual)
+{
+    TEST_ASSERT_EQUAL_UINT16(expected->device_id, actual->device_id);
+    TEST_ASSERT_EQUAL_UINT8(expected->sample_period_s, actual->sample_period_s);
+    TEST_ASSERT_EQUAL_UINT8(expected->protocol_mode, actual->protocol_mode);
+    TEST_ASSERT_EQUAL_UINT8(expected->alarm_mode, actual->alarm_mode);
+    TEST_ASSERT_EQUAL_UINT8(expected->local_sample_enabled, actual->local_sample_enabled);
+    TEST_ASSERT_EQUAL_UINT8(expected->hide_mode, actual->hide_mode);
+    TEST_ASSERT_EQUAL_UINT32(expected->rs485_baudrate, actual->rs485_baudrate);
+    TEST_ASSERT_EQUAL_MEMORY(expected->reserved, actual->reserved, sizeof(expected->reserved));
+    TEST_ASSERT_EQUAL_FLOAT(expected->ratio[0], actual->ratio[0]);
+    TEST_ASSERT_EQUAL_FLOAT(expected->ratio[1], actual->ratio[1]);
+    TEST_ASSERT_EQUAL_FLOAT(expected->limit[0], actual->limit[0]);
+    TEST_ASSERT_EQUAL_FLOAT(expected->limit[1], actual->limit[1]);
+}
+
+/* 验证八键准确分发、通道映射和每行只修改目标字段，允许中间配置未完整。 */
+static void test_line_apply_all_fields(void)
+{
+    const char *lines[] = {"protocol_mode=1", "device_id=00f7", "sample_period=010",
+        "alarm_mode=01", "ch0_ratio=3.25", "ch1_ratio=4.5", "ch0_limit=250.5", "ch1_limit=499.5"};
+    app_config_t candidate;
+    app_config_t expected;
+    unsigned i;
+    test_ini_candidate_init(&candidate);
+    expected = candidate;
+    for (i = 0U; i < sizeof(lines) / sizeof(lines[0]); i++)
+    {
+        switch (i)
+        {
+        case 0U: expected.protocol_mode = 1U; break;
+        case 1U: expected.device_id = 247U; break;
+        case 2U: expected.sample_period_s = 10U; break;
+        case 3U: expected.alarm_mode = 1U; break;
+        case 4U: expected.ratio[0] = 3.25f; break;
+        case 5U: expected.ratio[1] = 4.5f; break;
+        case 6U: expected.limit[0] = 250.5f; break;
+        case 7U: expected.limit[1] = 499.5f; break;
+        default: break;
+        }
+        TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR, app_config_ini_line_apply(
+            lines[i], (uint16_t)strlen(lines[i]), &candidate));
+        test_ini_candidate_equal(&expected, &candidate);
+    }
+}
+
+/* 验证未知/大小写/前缀键、八字段非法值及行结构错误不改候选配置。 */
+static void test_line_apply_errors_preserve_candidate(void)
+{
+    const char *lines[] = {"Device_id=0001", "device=0001", "device_id_extra=0001",
+        "ch2_ratio=1", "ch0_ratio_extra=1", "baudrate=115200", "version=1",
+        "device_id=FFFF", "sample_period=6", "protocol_mode=2", "alarm_mode=0",
+        "ch0_ratio=100.000001", "ch1_ratio=NaN", "ch0_limit=500.000001",
+        "ch1_limit=-1", "alarm_mode=2 # comment", "ch0_ratio", "ch0_ratio=", "ch0_ratio=1=2"};
+    app_config_t candidate;
+    unsigned char before[sizeof(candidate)];
+    unsigned i;
+    test_ini_candidate_init(&candidate);
+    memcpy(before, &candidate, sizeof(candidate));
+    for (i = 0U; i < sizeof(lines) / sizeof(lines[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR, app_config_ini_line_apply(
+            lines[i], (uint16_t)strlen(lines[i]), &candidate));
+        TEST_ASSERT_EQUAL_MEMORY(before, &candidate, sizeof(candidate));
+    }
+}
+
+/* 验证空白与注释跳过，NULL/超长/嵌入 NUL 拒绝，候选配置始终保留。 */
+static void test_line_apply_skip_and_arguments(void)
+{
+    const char *lines[] = {"", " \t", " \t# config"};
+    const char nul[] = "device_id=00\0f";
+    char long_line[129];
+    app_config_t candidate;
+    unsigned char before[sizeof(candidate)];
+    unsigned i;
+    test_ini_candidate_init(&candidate);
+    memcpy(before, &candidate, sizeof(candidate));
+    for (i = 0U; i < sizeof(lines) / sizeof(lines[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_SKIP, app_config_ini_line_apply(
+            lines[i], (uint16_t)strlen(lines[i]), &candidate));
+        TEST_ASSERT_EQUAL_MEMORY(before, &candidate, sizeof(candidate));
+    }
+    memset(long_line, 'a', sizeof(long_line));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
+        app_config_ini_line_apply(long_line, sizeof(long_line), &candidate));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
+        app_config_ini_line_apply(nul, sizeof(nul) - 1U, &candidate));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
+        app_config_ini_line_apply(NULL, 0U, &candidate));
+    TEST_ASSERT_EQUAL_MEMORY(before, &candidate, sizeof(candidate));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_ERROR,
+        app_config_ini_line_apply("alarm_mode=1", 12U, NULL));
+}
+
+/* 验证带空白的非 NUL 终止单行能直接分发，输入文本保持不变。 */
+static void test_line_apply_raw_input_unchanged(void)
+{
+    const char line[] = " \tch1_limit = 0250.50 \t";
+    char raw[sizeof(line) - 1U];
+    app_config_t candidate;
+    app_config_t expected;
+    memcpy(raw, line, sizeof(raw));
+    test_ini_candidate_init(&candidate);
+    expected = candidate;
+    expected.limit[1] = 250.5f;
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR,
+        app_config_ini_line_apply(raw, sizeof(raw), &candidate));
+    test_ini_candidate_equal(&expected, &candidate);
+    TEST_ASSERT_EQUAL_MEMORY(line, raw, sizeof(raw));
+}
+
 /* PC 测试入口：返回 Unity 失败数供命令行判断。 */
 int main(void)
 {
@@ -536,5 +668,9 @@ int main(void)
     RUN_TEST(test_limit_invalid_preserves_output);
     RUN_TEST(test_limit_buffer_arguments);
     RUN_TEST(test_limit_from_line);
+    RUN_TEST(test_line_apply_all_fields);
+    RUN_TEST(test_line_apply_errors_preserve_candidate);
+    RUN_TEST(test_line_apply_skip_and_arguments);
+    RUN_TEST(test_line_apply_raw_input_unchanged);
     return UNITY_END();
 }

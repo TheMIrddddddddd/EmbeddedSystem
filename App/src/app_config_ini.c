@@ -1,5 +1,90 @@
 #include "app_config_ini.h"
 #include "app_config.h"
+#include <string.h>
+
+/* 比较键片段与 NUL 终止的常量键名，长度和字节均相同返回 1。
+ * key 来自已成功拆分的行，无需终止符；严格区分大小写，不接受前缀。
+ */
+static int app_config_ini_key_equal(const char *key, uint16_t length,
+                                    const char *expected)
+{
+    return ((strlen(expected) == length) &&
+            (memcmp(key, expected, length) == 0)) ? 1 : 0;
+}
+
+/* 拆分 length 字节的单行，识别八个配置键并写入独占临时结构 candidate。
+ * PAIR 表示一个字段成功写入；SKIP/ERROR 保持 candidate 完全不变。
+ * 各值解析器只有成功时才写输出，因此可直接传入对应字段的地址。
+ * 不检查重复/缺失键和跨字段约束；中间候选配置不代表可应用配置。
+ */
+app_config_ini_line_status_t app_config_ini_line_apply(
+    const char *line, uint16_t length, app_config_t *candidate)
+{
+    app_config_ini_pair_t pair;
+    app_config_ini_line_status_t status;
+    const char *key;
+    const char *value;
+    int parsed;
+
+    if (candidate == NULL)
+    {
+        return APP_CONFIG_INI_LINE_ERROR;
+    }
+    status = app_config_ini_line_parse(line, length, &pair);
+    if (status != APP_CONFIG_INI_LINE_PAIR)
+    {
+        return status;
+    }
+
+    key = line + pair.key_offset;
+    value = line + pair.value_offset;
+    if (app_config_ini_key_equal(key, pair.key_length, "device_id"))
+    {
+        parsed = app_config_ini_device_id_parse(value, pair.value_length,
+                                                &candidate->device_id);
+    }
+    else if (app_config_ini_key_equal(key, pair.key_length, "sample_period"))
+    {
+        parsed = app_config_ini_sample_period_parse(value, pair.value_length,
+                                                    &candidate->sample_period_s);
+    }
+    else if (app_config_ini_key_equal(key, pair.key_length, "protocol_mode"))
+    {
+        parsed = app_config_ini_protocol_mode_parse(value, pair.value_length,
+                                                    &candidate->protocol_mode);
+    }
+    else if (app_config_ini_key_equal(key, pair.key_length, "alarm_mode"))
+    {
+        parsed = app_config_ini_alarm_mode_parse(value, pair.value_length,
+                                                 &candidate->alarm_mode);
+    }
+    else if (app_config_ini_key_equal(key, pair.key_length, "ch0_ratio"))
+    {
+        parsed = app_config_ini_ratio_parse(value, pair.value_length,
+                                            &candidate->ratio[0]);
+    }
+    else if (app_config_ini_key_equal(key, pair.key_length, "ch1_ratio"))
+    {
+        parsed = app_config_ini_ratio_parse(value, pair.value_length,
+                                            &candidate->ratio[1]);
+    }
+    else if (app_config_ini_key_equal(key, pair.key_length, "ch0_limit"))
+    {
+        parsed = app_config_ini_limit_parse(value, pair.value_length,
+                                            &candidate->limit[0]);
+    }
+    else if (app_config_ini_key_equal(key, pair.key_length, "ch1_limit"))
+    {
+        parsed = app_config_ini_limit_parse(value, pair.value_length,
+                                            &candidate->limit[1]);
+    }
+    else
+    {
+        return APP_CONFIG_INI_LINE_ERROR;
+    }
+
+    return parsed ? APP_CONFIG_INI_LINE_PAIR : APP_CONFIG_INI_LINE_ERROR;
+}
 
 /* 解析 length 字节的非负十进制片段，语法为整数或整数加 1~6 位小数。
  * maximum 为允许的整数上限；用有界整数保存整数/小数部分，
