@@ -7,6 +7,7 @@
 #include "gd32f4xx_misc.h"
 
 #include "board_config.h"
+#include "board_dma_map.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -27,10 +28,6 @@
 #define BOARD_SDIO_R1_READY_FOR_DATA            0x00000100U
 #define BOARD_SDIO_R1_CURRENT_STATE_MASK        0x00001E00U
 #define BOARD_SDIO_CARD_STATE_TRANSFER          0x00000800U
-
-#define BOARD_SDIO_DMA_PERIPH                   DMA1
-#define BOARD_SDIO_DMA_CHANNEL                  DMA_CH6
-#define BOARD_SDIO_DMA_SUBPERIPH                DMA_SUBPERI4
 
 #define BOARD_SDIO_DMA_WORD_COUNT \
     (BOARD_SDIO_BLOCK_SIZE / 4U)
@@ -166,7 +163,7 @@ static void board_sdio_dma_config(const uint8_t *buffer,uint32_t direction)
 
     dma_single_data_mode_init(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, &dma_config);
 
-    dma_channel_subperipheral_select(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, BOARD_SDIO_DMA_SUBPERIPH);
+    dma_channel_subperipheral_select(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, BOARD_SDIO_DMA_SUBPERI);
 
     dma_interrupt_enable(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, DMA_INT_FTF);
 
@@ -220,7 +217,7 @@ static void board_sdio_dma_write_config(const uint8_t *buffer)
     dma_channel_subperipheral_select(
         BOARD_SDIO_DMA_PERIPH,
         BOARD_SDIO_DMA_CHANNEL,
-        BOARD_SDIO_DMA_SUBPERIPH);
+        BOARD_SDIO_DMA_SUBPERI);
 
     dma_interrupt_enable(
         BOARD_SDIO_DMA_PERIPH,
@@ -697,7 +694,7 @@ int board_sdio_bus_init(void)
     rcu_periph_clock_enable(RCU_GPIOD);
     rcu_periph_clock_enable(RCU_SDIO);
 
-    nvic_irq_enable(DMA1_Channel6_IRQn, 7U, 0U);
+    nvic_irq_enable(BOARD_SDIO_DMA_IRQn, 7U, 0U);
     nvic_irq_enable(SDIO_IRQn, 7U, 0U);
 
     gpio_af_set(BOARD_SDIO_D0_PORT, BOARD_SDIO_AF, data_clock_pins);

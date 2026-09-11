@@ -3,7 +3,7 @@
 > 文档版本:V1.0 | 日期:2026-08-09
 > 定位:本文是《01_PROJECT_OVERVIEW.md》第十五章 M0~M7 里程碑的**执行级展开**——把每个里程碑翻译成「动作清单 → 产出文件 → 依赖 → 卡点 → 验收关卡」。
 > 使用方式:开发时照表执行,验收时对照《01》第十四章(A-01~Q-02)与第十四-2(稳定性)逐条验证;技术原理见《02_TECH_STACK.md》。
-> 当前工程状态:M0、M1 与 M2 已完成;当前进入 M3 准备阶段。M2 的公共组件均已在 PC 上完成验证,尚未移植 FreeRTOS,业务功能仍按 M3~M5 计划推进。
+> 当前工程状态:M0~M3 已完成;M4 采集与通信阶段已完成 M4-0~M4-6——采样滤波换算、USART0 CLI 全量、RTC 日历、RS485 自定义协议全量(含自动上报与心跳)、Modbus RTU 从站及 Python 回归均已完成板测;当前进入 M5 TF 卡与告警。
 
 ---
 
@@ -428,7 +428,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 1. ADC/DMA 100ms 常驻采集 + 3 次均值滤波,写入共享区(采集引擎常驻,《01》十三-5);
 2. DAC 输出 PA4 → 跳线 PC1 回读,打通输出-采集闭环(《02》3.4);
-3. 基于 M3 已完成的 USART0 BSP 实现 CLI 全部指令(test / rtc config / rtc now / conf / ratio / limit / config save|read / protocol / id / baud / start / stop / hide / unhide / help),CLI 解析在 ControlTask 上下文,ISR 只收数据入队(《01》四-5);
+3. 基于 M3 已完成的 USART0 BSP 实现 M4 运行时 CLI 指令(test / rtc config / rtc now / ratio / limit / protocol / id / baud / start / stop / hide / unhide / help),CLI 解析在 ControlTask 上下文,ISR 只收数据入队;`conf` 与 `config save|read` 的文件导入和持久化归 M5(《01》四-5);
 4. 基于 M3 已完成的 USART1/PA1 RS485 链路实现自定义二进制帧协议(帧格式/CRC16/应答超时/序列号,《01》七章);
 5. Modbus RTU 从站(03/04/06/10 功能码,寄存器映射《01》八章),`protocol_mode` 切换;
 6. **Python 回归测试脚本同步进场**:串口发帧/收帧/断言,覆盖正常帧 + 错误帧 + 异常帧。
@@ -437,7 +437,87 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **风险点:** USART IDLE 中断不保证帧边界,半帧/多帧必须由 RingBuffer 解析器消化(《02》3.1 注意事项)。
 
+**M4 执行进度(更新于 2026-09-11):**
+
+- **M4-1b/M4-2/M4-3a/M4-3b 已板测通过**,打包为本地提交 `fa844b4`(M4:完成采样滤波换算与CLI采样控制闭环,18 文件 +1204/-32,未推送)。SampleTask 3 点滑动均值滤波 + 码值→mV→×变比三级换算板上验证(CH1 DAC 回读 1650mV);`FF_CODE_PAGE` 932→437 释放 58.7KB RO-data(LFN 保留,《01》六章长文件名为硬约束);`board_dma_map.h` 收全 4 条 DMA 并带编译期冲突检查(实测有效);CLI 骨架 + start/stop/hide/unhide + 周期采样行 + 超限标注 + LED3 + KEY1 启停 + KEY2/KEY3/KEY4 周期设置,HEX 编码板上解码验证正确。
+- **M4-3c/M4-3d 已板测通过**,打包为本地提交 `ce93854`(M4:完成CLI两段式配置与RTC日历闭环,12 文件 +1230/-145,未推送)。3c:ratio/limit/protocol/id/baud 五个两段式命令(pending 状态机收敛在 app_cli 内部,手写定点/HEX/十进制解析器,不用 strtod),D/E 类验收达成;3d:`BSP/board_rtc.c` LSE 32.768k 非致命初始化——**LSE 起振成功,最大硬件风险解除**,跨午夜日期翻转(C-01 达成),Unix 历法硬校验(2026-09-07 00:00:00 = 0x6A9DFE80)精确命中,`test` 四项自检全 PASS。范围裁定:protocol/id/baud 回复文本不带 `, saved [OK]`(持久化归 M5);`baud` 上电默认 115200(用户裁定,见《02》3.1)。
+- **M4-4a/4b/4c 已板测通过**,打包为本地提交 `31ed947`(M4:完成RS485自定义协议链路与命令分发,15 文件 +1683/-6,未推送)。4a:`Middleware/Protocol/protocol_stream.c` 流式帧解析器(搜帧头/半帧/粘包/噪声前缀/CRC错重同步/坏长度丢弃,坏帧快照供错误应答),PC Unity 86 用例全绿;4b:ProtocolTask 集成——USART1 RX→解析器→类型/地址/重复帧三道过滤→request/result 双队列→ControlTask 经 `app_protocol.c` 业务分发(与 CLI 命令表分离)→编码回发,重复帧命中缓存原样重发,板测 9/9;4c:13 条命令(重启/版本/ID/波特率/DAC/阈值/变比/TF状态/自检)、广播写静默执行(允许表)、忙碌策略框架、K-01/K-02 坏帧错误应答、0x0101 应答后系统复位,板测 27/27。主机端测试工具 `test/rs485_host.py`(拼帧/CRC16-Modbus/自动判定)随步建成。
+- **M4-4d 已板测通过**,打包为本地提交 `a3683cf`(M4:完成自动上报与心跳,RS485 协议链路收官,5 文件 +320/-18,未推送)。0x0302/0x0303/0x0304 自动上报启停与间隔设置;0x0382 事件帧 12B(RTC Unix 时间戳 + CH0/CH1 大端 float,取共享区最新快照),实测 2s 间隔下 2.6s 窗口收到 3 帧;0x8888 心跳上电一次后每 30s,载荷 2B 设备 ID(A-04 达成);忙碌策略通电——上报期间仅放行 0x0303/0x03AA,其余回 0x05(H-02 达成);LED1/2/5 联动补全。板测 35/35 + 心跳全 PASS。
+- **已达成验收项**:A-01/A-02/A-04、B-01、C-01、D-01/D-02、E-01/E-02、G-01、H-01/H-02/H-03、K-01/K-02/K-03;L-01/M-01 的"生效"半程达成,持久化半程归 M5。ROM 54.6KB/42.6%(上限 128KB)。
+- **M4-5/M4-6 已完成**:Modbus RTU 从站已完成寄存器映射、03/04/06/10 功能码、异常响应、`protocol_mode` 分派及 request/result 队列链路;`rs485_host.py` 已扩展 Modbus 8E1 回归和异常注入。已知文档留白补白:事件帧序列号=0;上报间隔范围 1~86400s;心跳载荷=2B 设备 ID。
+
 ---
+
+### M4-5a Modbus RTU 规则冻结（2026-09-09）
+
+状态：用户已确认拆步方案；本节冻结设计契约，不表示 M4-5b~f 已实现或板测通过。保留上方既有进度记录。任务书依据为《01》第八章和 O-01；O-01 列出 03/06/10，本阶段额外验收 04。
+
+#### 寄存器和业务规则
+
+- 保持寄存器：0x0000~0001 CH0 变比、0x0002~0003 CH1 变比、0x0004~0005 CH0 阈值、0x0006~0007 CH1 阈值，均为 float32；0x0010 为设备 ID；0x0011 为波特率枚举 0~4，对应 9600/19200/38400/57600/115200。0x0008~000F 为未映射空洞，不补零。
+- 输入寄存器：0x0000~0001 CH0、0x0002~0003 CH1，提供滤波并乘变比后的 float32 采样值。一次读请求取同一份配置或采样快照。允许读单个 16 位寄存器。
+- float32 高字在前，每个寄存器高字节在前（AB CD）；CRC16 低字节先发。复用 common_crc16_calc，不沿用自定义协议的 CRC 发送字节序。
+- 06 仅允许写 0x0010/0011；float32 必须通过 10 完整写入寄存器对，禁止半字写。半字写或跨空洞等不支持的地址组合返回 0x02。
+- 10 先验证全部字段，再原子发布整批配置；任何字段失败都不得部分生效。变比 0~100、阈值 0~500，拒绝 NaN/Inf。变比同时同步采样换算，不能只更新配置模型。
+- 通用请求层支持标准读数量 1~125、10 写数量 1~123；业务层按映射拒绝不存在的地址。不得用当前队列容量静默截断合法请求。
+- CRC 错、时序错、截断/结构不完整、非本机地址静默丢弃。完整且 CRC 正确的本机请求：未知功能码返回 0x01，非法地址返回 0x02，非法数量/数据值返回 0x03；队列满或处理超时补充标准 0x06（设备忙）。异常响应功能码为请求功能码 | 0x80；不复用自定义协议错误码。
+- 广播地址 0：仅允许合法完整的变比/阈值写入，成功或失败均不应答；广播读、广播修改 ID/波特率静默忽略，混合广播写不得部分执行。
+
+#### 模式切换和通信参数
+
+- 自定义协议保持 8N1；Modbus 使用 8E1，PC 工具同步。USART 的有效数据位与校验位组合须按本地 GD32 库核对后配置，确保线上为 8 个数据位加偶校验位。
+- protocol_mode 经 USART0 CLI 切换；切入 Modbus 前校验 ID 为 1~247，超范围拒绝且保留原模式。Modbus 模式下其他 ID 修改入口同样限制为 1~247。
+- 已接受的请求及响应发送完成后切换；清理旧模式解析器、接收残帧和重复应答缓存，等待新模式帧起始条件。请求/结果必须携带协议标识及关联信息；校验 request_id、deadline 和模式代次，拒绝迟到结果及失效请求。
+- 进入 Modbus 清除自定义自动上报使能及其忙碌状态，停止 0x0382/0x8888 事件发送；ADC 常驻采集和 CLI 本地采样保持原状态。切回自定义模式后不自动恢复上报，心跳从切换完成时重新计时，30s 后发送第一帧；真实冷启动的首次心跳规则保持原约定。
+- Modbus 改 ID/波特率先以旧地址、旧波特率完成应答，等待 TC 后再使新参数生效；配置模型、USART 硬件和 RTU 计时一致更新。切换/改参操作在任务间协调，避免 CLI 在 RS485 发帧中途直接改硬件。
+- 全部修改仅运行时生效，持久化严格归 M5，不输出 saved [OK]。FatFs、FF_CODE_PAGE=437 和 LFN 配置不变。
+
+#### 收帧、所有权和验收
+
+- USART1 IDLE 只是接收空闲提示，不等于 t3.5。RTU 层接收带边界/时间的信息；低于或等于 19200 按 11 bit 字符计算 t1.5/t3.5，高于 19200 使用 750us/1750us。基于微秒计时和接收活动确认边界，不能通过 ProtocolTask 的 10ms 轮询恢复已丢失的边界。
+- ISR 仅维护接收数据、时间和事件；CRC、寄存器解析和业务放任务。定时器实例在 M4-5d 检查现有资源后分配。帧内超过 t1.5 又在 t3.5 前继续接收时整帧丢弃；溢出后等完整静默窗口恢复。
+- ProtocolTask 负责收帧/协议分派/发帧；ControlTask 调用独立 app_modbus 业务层。复用现有 request/result 双队列并扩展载荷容量，保证最长已映射事务（10 写 8 寄存器的数据区 21B，03 读 8 寄存器响应数据区 17B）完整承载。跨任务不传指向可复用 RX 缓冲区的裸指针；静态缓冲优先，不把大 ADU 放任务栈。
+- M4-5b：补请求解析及异常编码，保留 M2 原接口/测试；M4-5c：寄存器业务；M4-5d：RTU 收帧；M4-5e：队列与模式集成；M4-5f/M4-6：扩展 rs485_host.py 与板测。
+- 每步对应 PC 测试及 App 构建，通过当次 MDK/build/*.map 记录 ROM/RAM 和增量，ROM 上限 128KB；提交前复核 IndustrialEmbedded-App.code-workspace 的 cortex-debug 设置。仅用户要求时提交，不推送。
+- 板测端口：COM9 连接 USART0，仅用于 CLI 模式切换；COM14 连接 USART1/RS485，用于自定义协议和 Modbus RTU 收发。冷启动可用约 5.5s；影响采样结果的写入后等待 400ms。覆盖 03/04/06/10、异常、广播、参数原子性、ID/波特率及模式往返切换，并回归自定义协议 35/35 和心跳。亚毫秒时序须用板侧计时或逻辑分析仪验证，Windows Python sleep 不作为严格时序证据。
+
+规范参考：https://www.modbus.org/docs/Modbus_over_serial_line_V1_02.pdf
+
+### M4-5d 接收时序实现记录（2026-09-10）
+
+- TIMER1 维持 1MHz 自由运行。`BSP/board_rtu_timing.h` 为可在 PC 执行的私有时序核心，`board_usart.c` 负责字节、RingBuffer、帧事件和硬件适配。
+- 接收方案修正：仅用 DMA 批量提交/IDLE 时间差无法还原各字节间隙。RTU 模式改用 USART1 RBNE 逐字节中断采集完成时刻，关闭 USART 的 RX DMA 请求；自定义协议保留 DMA0 CH5 + IDLE。BSP 切换接口设置 8E1（9 位字长含偶校验）/8N1；该接口须由通信所有者在 TX 完成后调用。上层模式分派仍属 M4-5e。
+- 时间判定采用相邻字节完成时刻之差，扣除本字符时间后比较 t1.5/t3.5。非法间隔置整帧错误并丢弃后续字节，直到完整静默窗口结束；新模式启用时同样等待静默。字节时间向上取整至微秒，阈值附近的量化及 ISR 延迟误差须在板上测量。
+- 结束确认增加一个字符保护时间，防止在下一字节尚未收完时切断接收序列；115200 下 t1.5=750us、t3.5=1750us、字符时间=96us，比较定时等待=1846us。若下一字节先到，则根据其时间戳判断上一帧边界，不依赖任务轮询。
+- 帧最大 256B。时序错误返回 `BOARD_USART1_RS485_RX_FRAME_GAP_ERROR`，超长/硬件错误返回 OVERFLOW，错误帧消费后 length=0。取帧过程以短临界区保护事件与字节的一致性；旧字节接口在 RTU 启用时不消费数据。事件队列满丢弃积压并记录计数。
+- 新增 `test/Makefile.rtu_timing`，覆盖纯时序和实际 BSP 接收代码（仅寄存器/时钟用 PC 替身）：t1.5/t3.5 边界、异常后缀丢弃、初始静默、计时回绕、延迟中断、队列/长度溢出、首字节校验错后恢复、模式往返、9600/19200/115200 参数和定时回调中的待处理字节。已有 98 项协议/公共组件与 14 项业务测试回归通过。
+- 证据边界：上述为 PC 测试和 AC5 构建验证；尚未完成串口压力下的 IRQ 延迟测量、COM9 RTU 收发与 O-01。ProtocolTask 默认仍运行自定义协议，RTU 接收默认关闭。
+- 本步 AC5 map：ROM=58668B（57.29KiB，44.8%），RAM=24536B（23.96KiB）；相对上一步 ROM +460B、RAM +40B。未调用的 RTU 启用/取帧接口仍被链接器裁剪，M4-5e 接入后需再次核算。cortex-debug.variableUseNaturalFormat=true 保留。
+
+### M4-5e-1 队列契约适配（2026-09-11）
+
+- request 数据区扩为 252B，result 数据区扩为 32B；增加协议类型、模式代次、设备地址及应答后应用通信参数字段。队列仍按 sizeof 创建，深度各为 8。
+- 自定义请求清零后填写身份字段，业务结果回填对应身份；`mode_epoch` 已由 ProtocolTask 生成并用于 Modbus 结果匹配。自定义载荷超过 12B 时，在缓存命中检查前拒绝，不再截断执行。
+- ProtocolTask 和 ControlTask 的请求/结果对象移到任务独占静态区。AC5 构建通过，ROM=58760B（57.38KiB），RAM=27448B（26.80KiB）；相对 M4-5d 增加 ROM 92B、RAM 2912B。
+- 既有 PC 公共组件/协议 98 项、业务 15 项及 RTU 时序/BSP 测试通过；cortex-debug 设置保留。上述测试不等于本次队列链路已在 COM9 回归。后续补充模式切换事务和 COM9 板测。
+
+### M4-5e-2/3 ControlTask 分发与 ProtocolTask RTU 集成（2026-09-11）
+
+- `ControlTask` 按 `protocol_kind` 分派：自定义请求进入 `app_protocol_execute()`；Modbus 请求在任务上下文重建 `modbus_request_t`，调用 `app_modbus_execute()`，再转换为公共 `protocol_result_t` 入 result 队列。10 功能码写入数据只使用队列内副本，不跨任务传递 RX 缓冲区指针。
+- `ProtocolTask` 按 `app_config.protocol_mode` 同步协议模式：自定义模式使用 USART1 8N1 + DMA0 CH5 + IDLE；Modbus 模式使用 USART1 8E1 + RBNE 逐字节接收，从 RTU 帧接口取出完整 ADU，调用 `modbus_rtu_request_decode()` 后填充 request 队列。CRC/截断/非法地址等结构错误静默丢弃，完整未知功能码和数量异常交给业务层生成标准异常响应。
+- Modbus 响应经 `modbus_rtu_encode()` 或 `modbus_rtu_exception_encode()` 生成，CRC 低字节先发；广播不响应。ID/波特率修改在旧响应发送完成后应用，模式切换清空自定义解析器和重复应答缓存，并关闭自动上报/心跳。
+- request/result 队列已扩容并纳入模式代次、请求地址、功能字段和通信参数待应用字段；当前模式代次用于 Modbus 结果匹配，后续仍需补充更完整的模式切换事务协调和队列清理策略。
+- `app_config` 增加 Modbus 地址约束：进入 Modbus 及 Modbus 模式下修改设备 ID 均限制为 1~247。AC5 构建通过：ROM=62420B（60.96KiB，47.6%），RAM=28136B（27.48KiB，14.3%）；公共/协议 98 项、业务 15 项、RTU 时序/BSP 接收测试通过。map 已确认 `control_execute_modbus_request`、`protocol_process_modbus_frames`、`protocol_process_modbus_request` 和 `app_modbus_execute` 均被链接。COM9 模式切换、COM14 实际 Modbus 收发及 O-01 板测结果见 M4-5f/M4-6 记录；workspace 的 `cortex-debug.variableUseNaturalFormat` 保持为 `true`。
+
+### M4-5f/M4-6 Python 回归与板级验收（2026-09-11）
+
+- `test/rs485_host.py` 新增 Modbus RTU 主机：COM14 使用 115200 8E1，CRC16-Modbus 低字节先发，支持 03/04/06/10 响应解析、异常响应校验和静默帧检查；新增 `test/test_rs485_host.py`，主机帧单元测试 5/5 通过。
+- 端口职责已按实物连接固定：COM9 为 USART0/115200 8N1，用于发送 `protocol` 和模式值；COM14 为 USART1/RS485/115200 8E1，用于 Modbus RTU 和自定义 RS485 协议。测试由 COM9 将 `protocol` 从 0 切换为 1 后开始，Modbus 测试完成后再切回 0。
+- Modbus 功能性板测 `python test/rs485_host.py COM14 modbus`：14/14 通过。覆盖设备 ID、变比和输入寄存器读取，06 原值回显，10 完整 float32 写入与回读，非法变比异常 03 及整批写入原子性，空洞地址异常 02，非法 ID 异常 03，未支持功能码异常 01，错误地址/错误 CRC 静默以及广播合法写静默。实测 ID=1、变比=1.000/1.000、CH0=2.282V、CH1=1.652V。
+- 自定义 RS485 回归 `python test/rs485_host.py COM14 all`：39/39 通过；新增验证 0x0106 在 115200 与 57600 间切换，确认旧波特率应答完成后再切换，并恢复到 115200。原有自动上报、上报期间忙碌策略、停止上报、异常帧、DAC/阈值/变比业务、重启恢复均通过。重启后约 5.5s 恢复通信。
+- 补缺闭环板测：设备 ID=248 时 CLI 输入 `protocol=1` 返回 `parameter invalid, protocol unchanged` 且仍保持 custom；KEY2/KEY3/KEY4 分别输出并设置 5s/10s/15s；切换 custom↔Modbus 后 Modbus 回归通过。双队列 reset 的 PC 测试 1/1 通过，自定义结果已按 request_id/mode_epoch/protocol_kind 匹配。
+- 随代码变更重新 AC5 构建：ROM=62768B（61.30KiB，47.9%），RAM=28136B（27.48KiB，14.3%）；`cortex-debug.variableUseNaturalFormat=true` 保持。测试结束时设备恢复为 ID=1、115200、自定义协议，采样周期最后设置为 15s；参数仍为运行时生效，持久化继续归 M5。
+- 本次证据覆盖功能性串口收发、模式往返和 O-01 所需 03/06/10（另含 04）板测；未替代逻辑分析仪对亚毫秒 IRQ 延迟、t1.5/t3.5 临界边界的严格线级测量。全部配置仍为运行时生效，持久化继续归 M5。
 
 ## 八、M5:TF 卡与告警
 

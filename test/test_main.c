@@ -3,6 +3,18 @@
  */
 
 #include "unity.h"
+void test_slave_fixed_read_vector(void);
+void test_slave_read_quantity_boundaries(void);
+void test_slave_write_single_values(void);
+void test_slave_write_multiple_limits_and_payload(void);
+void test_slave_write_multiple_bad_values(void);
+void test_slave_address_and_unknown_function(void);
+void test_slave_invalid_arguments_and_bounds(void);
+void test_slave_crc_corruption_and_order(void);
+void test_slave_structure_lengths(void);
+void test_slave_rejects_concatenated_frames(void);
+void test_slave_exception_fixed_vector(void);
+void test_slave_exception_codes_and_arguments(void);
 
 void setUp(void)
 {
@@ -40,6 +52,14 @@ void test_protocol_decode_rejects_fixed_field_errors(void);
 void test_protocol_decode_rejects_length_errors(void);
 void test_protocol_decode_rejects_crc_and_tail_errors(void);
 void test_protocol_decode_consumes_one_frame(void);
+void test_stream_single_frame_byte_by_byte(void);
+void test_stream_noise_prefix(void);
+void test_stream_half_frame_then_complete(void);
+void test_stream_two_frames_sticky(void);
+void test_stream_crc_error_resync_to_next_frame(void);
+void test_stream_bad_length_dropped(void);
+void test_stream_dangling_a5_then_resume(void);
+void test_stream_bad_frame_snapshot_surfaces(void);
 void test_modbus_encode_read_request(void);
 void test_modbus_encode_empty_data(void);
 void test_modbus_decode_read_response(void);
@@ -95,6 +115,18 @@ void test_upgrade_meta_rejects_invalid_commit_marker(void);
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_slave_fixed_read_vector);
+    RUN_TEST(test_slave_read_quantity_boundaries);
+    RUN_TEST(test_slave_write_single_values);
+    RUN_TEST(test_slave_write_multiple_limits_and_payload);
+    RUN_TEST(test_slave_write_multiple_bad_values);
+    RUN_TEST(test_slave_address_and_unknown_function);
+    RUN_TEST(test_slave_invalid_arguments_and_bounds);
+    RUN_TEST(test_slave_crc_corruption_and_order);
+    RUN_TEST(test_slave_structure_lengths);
+    RUN_TEST(test_slave_rejects_concatenated_frames);
+    RUN_TEST(test_slave_exception_fixed_vector);
+    RUN_TEST(test_slave_exception_codes_and_arguments);
 
     RUN_TEST(test_crc16_standard_vector);
     RUN_TEST(test_crc16_empty);
@@ -126,6 +158,15 @@ int main(void)
     RUN_TEST(test_protocol_decode_rejects_length_errors);
     RUN_TEST(test_protocol_decode_rejects_crc_and_tail_errors);
     RUN_TEST(test_protocol_decode_consumes_one_frame);
+
+    RUN_TEST(test_stream_single_frame_byte_by_byte);
+    RUN_TEST(test_stream_noise_prefix);
+    RUN_TEST(test_stream_half_frame_then_complete);
+    RUN_TEST(test_stream_two_frames_sticky);
+    RUN_TEST(test_stream_crc_error_resync_to_next_frame);
+    RUN_TEST(test_stream_bad_length_dropped);
+    RUN_TEST(test_stream_dangling_a5_then_resume);
+    RUN_TEST(test_stream_bad_frame_snapshot_surfaces);
 
     RUN_TEST(test_modbus_encode_read_request);
     RUN_TEST(test_modbus_encode_empty_data);

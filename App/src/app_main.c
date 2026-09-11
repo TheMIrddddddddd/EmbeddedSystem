@@ -6,6 +6,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app_task.h"
+#include "app_config.h"
 
 #include "board_gpio.h"
 #include "board_key.h"
@@ -13,6 +14,10 @@
 #include "board_usart.h"
 #include "board_i2c.h"
 #include "board_oled.h"
+#include "board_adc.h"
+#include "board_dac.h"
+#include "board_rtc.h"
+#include "board_timebase.h"
 #include "common_flash_layout.h"
 
 int main(void)
@@ -25,6 +30,15 @@ int main(void)
     __ISB();
 
     nvic_priority_group_set(NVIC_PRIGROUP_PRE4_SUB0);
+
+    if (board_timebase_init() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
 
     board_led_init();
     board_key_init();
@@ -58,6 +72,44 @@ int main(void)
     }
 
     if (board_spi_flash_reset() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+
+    (void)board_rtc_init();
+
+    if (board_dac_init() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+
+    if (board_dac_output_set(2048U) == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+
+    if (board_adc_init() == 0)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
+
+    if (app_config_init() == 0)
     {
         __disable_irq();
 

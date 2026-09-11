@@ -58,6 +58,11 @@ virtualFolder:
         - path: ../BSP/board_i2c.c
         - path: ../BSP/board_oled.c
         - path: ../BSP/board_sdio.c
+        - path: ../BSP/board_dma_map.h
+        - path: ../BSP/board_adc.c
+        - path: ../BSP/board_dac.c
+        - path: ../BSP/board_rtc.c
+        - path: ../BSP/board_timebase.c
       folders: []
     - name: Middleware
       files:
@@ -74,6 +79,7 @@ virtualFolder:
         - path: ../Middleware/FatFs/src/fattime.c
         - path: ../Middleware/FatFs/src/ffsystem.c
         - path: ../Middleware/FatFs/src/ffunicode.c
+        - path: ../Middleware/Protocol/src/protocol_stream.c
       folders: []
     - name: Common
       files:
@@ -90,6 +96,10 @@ virtualFolder:
             - path: ../App/src/app_main.c
             - path: ../App/src/gd32f4xx_it.c
             - path: ../App/src/freertos_static.c
+            - path: ../App/src/app_config.c
+            - path: ../App/src/app_cli.c
+            - path: ../App/src/app_protocol.c
+            - path: ../App/src/app_modbus.c
           folders: []
         - name: config
           files:
@@ -321,7 +331,7 @@ targets:
         - ../Driver/CMSIS/GD/GD32F4xx/Include
         - ../Driver/CMSIS
         - ../Libraries/Include
-        - ../App
+        - ../App/inc
         - ../BSP
         - ../Middleware
         - ../Common/inc

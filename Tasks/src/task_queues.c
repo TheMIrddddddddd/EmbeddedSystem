@@ -4,11 +4,16 @@
 #define PROTOCOL_REQUEST_ITEM_SIZE          sizeof(protocol_request_t)
 #define KEY_EVENT_QUEUE_LENGTH              8U
 #define KEY_EVENT_ITEM_SIZE                 sizeof(key_event_t)
+#define PROTOCOL_RESULT_QUEUE_LENGTH        8U
+#define PROTOCOL_RESULT_ITEM_SIZE           sizeof(protocol_result_t)
 
 static StaticQueue_t s_protocol_request_queue;
 static uint8_t s_protocol_request_queue_storage[PROTOCOL_REQUEST_QUEUE_LENGTH * PROTOCOL_REQUEST_ITEM_SIZE];
 static StaticQueue_t s_key_event_queue;
 static uint8_t s_key_event_queue_storage[KEY_EVENT_QUEUE_LENGTH * KEY_EVENT_ITEM_SIZE];
+static StaticQueue_t s_protocol_result_queue;
+static uint8_t s_protocol_result_queue_storage[PROTOCOL_RESULT_QUEUE_LENGTH * PROTOCOL_RESULT_ITEM_SIZE];
+static QueueHandle_t s_protocol_result_queue_handle;
 
 static QueueHandle_t s_protocol_request_queue_handle;
 static QueueHandle_t s_key_event_queue_handle;
@@ -28,6 +33,18 @@ int task_queues_init(void)
         s_key_event_queue_storage,
         &s_key_event_queue
     );
+
+    s_protocol_result_queue_handle = xQueueCreateStatic(
+        PROTOCOL_RESULT_QUEUE_LENGTH,
+        PROTOCOL_RESULT_ITEM_SIZE,
+        s_protocol_result_queue_storage,
+        &s_protocol_result_queue
+    );
+
+    if (s_protocol_result_queue_handle == NULL)
+    {
+        return 0;
+    }
 
     if (s_protocol_request_queue_handle == NULL)
     {
@@ -70,6 +87,19 @@ BaseType_t protocol_request_receive(protocol_request_t *request, TickType_t wait
     );
 }
 
+void protocol_queues_reset(void)
+{
+    if (s_protocol_request_queue_handle != NULL)
+    {
+        (void)xQueueReset(s_protocol_request_queue_handle);
+    }
+
+    if (s_protocol_result_queue_handle != NULL)
+    {
+        (void)xQueueReset(s_protocol_result_queue_handle);
+    }
+}
+
 BaseType_t key_event_send(const key_event_t *event)
 {
     if (event == NULL)
@@ -93,4 +123,24 @@ BaseType_t key_event_receive(key_event_t *event, TickType_t wait_ticks)
         wait_ticks
     );
     
+}
+
+BaseType_t protocol_result_send(const protocol_result_t *result)
+{
+    if (result == NULL)
+    {
+        return errQUEUE_FULL;
+    }
+ 
+    return xQueueSend(s_protocol_result_queue_handle, result, 0U);
+}
+
+BaseType_t protocol_result_receive(protocol_result_t *result, TickType_t wait_ticks)
+{
+    if (result == NULL)
+    {
+        return pdFALSE;
+    }
+ 
+    return xQueueReceive(s_protocol_result_queue_handle, result, wait_ticks);
 }

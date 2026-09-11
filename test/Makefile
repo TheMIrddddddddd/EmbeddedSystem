@@ -14,6 +14,7 @@ SRCS := \
     ../Common/src/common_crc.c \
     ../Middleware/Ringbuffer/src/ringbuffer.c \
     ../Middleware/Protocol/src/protocol_frame.c \
+    ../Middleware/Protocol/src/protocol_stream.c \
     ../Middleware/Protocol/src/modbus_rtu.c \
     ../Middleware/CLI/src/cli.c \
     ../Middleware/FlashKV/src/flash_kv.c \
@@ -23,6 +24,7 @@ SRCS := \
     test_crc.c \
     test_ringbuffer.c \
     test_protocol_frame.c \
+    test_protocol_stream.c \
     test_modbus_rtu.c \
     test_cli.c \
     test_flash_kv.c \

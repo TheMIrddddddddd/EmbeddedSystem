@@ -1,0 +1,10 @@
+CC := gcc
+CFLAGS := -std=c99 -Wall -Wextra -Werror -Wno-type-limits -g -O0
+INCLUDES := -Iapp_protocol_stubs -I../App/inc -Iunity
+TARGET ?= /tmp/industrial_app_protocol_test
+SOURCES := ../App/src/app_protocol.c unity/unity.c test_app_protocol.c
+
+.PHONY: test
+test:
+	$(CC) $(CFLAGS) $(INCLUDES) $(SOURCES) -o $(TARGET)
+	$(TARGET)

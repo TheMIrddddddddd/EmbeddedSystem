@@ -36,6 +36,9 @@ OF SUCH DAMAGE.
 #include "systick.h"
 #include "board_usart.h"
 #include "board_sdio.h"
+#include "board_adc.h"
+#include "board_timebase.h"
+
 /*!
     \brief      this function handles NMI exception
     \param[in]  none
@@ -179,4 +182,14 @@ void DMA1_Channel6_IRQHandler(void)
 void SDIO_IRQHandler(void)
 {
     board_sdio_irq_handler();
+}
+
+void DMA1_Channel2_IRQHandler(void)
+{
+    board_adc_irq_handler();
+}
+
+void TIMER1_IRQHandler(void)
+{
+    board_timebase_irq_handler();
 }
