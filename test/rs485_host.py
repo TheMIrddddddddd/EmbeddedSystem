@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-rs485_host.py - M4-4 板测主机端工具（USB-RS485 适配器用）
+rs485_host.py - M4-4/M4-5 板测主机端工具（USB-RS485 适配器用）
 
 帧格式严格对齐《01》七-2 与固件 protocol_frame.c：
   A5B6 | 02 | 地址(2B大端) | 类型(1B) | 命令(2B大端) | 序列(2B大端) |
@@ -9,10 +9,12 @@ rs485_host.py - M4-4 板测主机端工具（USB-RS485 适配器用）
 
 用法:
   pip install pyserial
-  python rs485_host.py COM9 all        # 跑全部用例（M4-4c 全量 18 例）
-  python rs485_host.py COM9 one 0201   # 单发一条查询（命令字十六进制）
+  python rs485_host.py COM14 modbus   # Modbus RTU 回归（115200 8E1）
+  python rs485_host.py COM14 all      # 自定义 RS485 协议回归（115200 8N1）
+  python rs485_host.py COM14 one 0201 # 自定义协议单发一条查询
 """
 
+import math
 import struct
 import sys
 import time
@@ -31,6 +33,18 @@ ERROR_NAMES = {
     0x04: "非法参数值", 0x05: "设备忙",
 }
 
+MODBUS_EXCEPTION_NAMES = {
+    0x01: "非法功能",
+    0x02: "非法地址",
+    0x03: "非法值",
+    0x06: "设备忙",
+}
+
+MODBUS_FUNCTION_READ_HOLDING = 0x03
+MODBUS_FUNCTION_READ_INPUT = 0x04
+MODBUS_FUNCTION_WRITE_SINGLE = 0x06
+MODBUS_FUNCTION_WRITE_MULTIPLE = 0x10
+
 
 def crc16_modbus(data: bytes) -> int:
     crc = 0xFFFF
@@ -42,6 +56,48 @@ def crc16_modbus(data: bytes) -> int:
             else:
                 crc >>= 1
     return crc
+
+
+def build_modbus_frame(address: int, function: int, data: bytes = b"") -> bytes:
+    """构造 Modbus RTU ADU；CRC 按低字节在前发送。"""
+    body = bytes((address, function)) + data
+    return body + struct.pack("<H", crc16_modbus(body))
+
+
+def verify_modbus_response(resp: bytes, address: int, function: int):
+    """校验 Modbus 响应，返回 (ok, 描述, 业务数据)。"""
+    if resp is None:
+        return False, "超时无应答", b""
+    if len(resp) < 5:
+        return False, "响应过短", b""
+    if resp[0] != address:
+        return False, "响应地址错", b""
+    if resp[1] not in (function, function | 0x80):
+        return False, "响应功能码错", b""
+    if crc16_modbus(resp[:-2]) != struct.unpack("<H", resp[-2:])[0]:
+        return False, "CRC错误", b""
+
+    payload = resp[2:-2]
+    if resp[1] == (function | 0x80):
+        if len(payload) != 1:
+            return False, "异常响应长度错", b""
+        exception = payload[0]
+        return True, "EXCEPTION:%02X(%s)" % (
+            exception, MODBUS_EXCEPTION_NAMES.get(exception, "未知")), b""
+
+    if function in (MODBUS_FUNCTION_READ_HOLDING,
+                    MODBUS_FUNCTION_READ_INPUT):
+        if len(payload) < 1 or payload[0] != len(payload) - 1:
+            return False, "读响应字节数错", b""
+        return True, "OK", payload[1:]
+
+    if function in (MODBUS_FUNCTION_WRITE_SINGLE,
+                    MODBUS_FUNCTION_WRITE_MULTIPLE):
+        if len(payload) != 4:
+            return False, "写响应长度错", b""
+        return True, "OK", payload
+
+    return True, "OK", payload
 
 
 def build_frame(address, frame_type, command, sequence, payload=b"") -> bytes:
@@ -60,6 +116,9 @@ def break_crc(frame: bytes) -> bytes:
 class Rs485Host:
     def __init__(self, port: str, baud: int = 115200):
         self.ser = serial.Serial(port, baud, timeout=2.0)
+
+    def close(self):
+        self.ser.close()
 
     def transact(self, address, command, sequence, payload=b"",
                  expect_reply=True, raw_frame=None, timeout=2.0):
@@ -160,6 +219,96 @@ class Rs485Host:
             return True, "ERROR:%02X(%s)" % (code,
                                              ERROR_NAMES.get(code, "未知")), b""
         return False, "应答类型错: %02X" % resp[5], b""
+
+
+class ModbusRtuHost:
+    """115200 8E1 的 Modbus RTU 从站主机。"""
+
+    def __init__(self, port: str, baud: int = 115200, timeout: float = 0.5):
+        self.timeout = timeout
+        self.ser = serial.Serial(
+            port=port,
+            baudrate=baud,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_EVEN,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=timeout,
+        )
+
+    def close(self):
+        self.ser.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def transact(self, address, function, data=b"", expect_reply=True,
+                 raw_frame=None, timeout=None):
+        """发送一个 ADU；返回完整响应，静默场景返回收到的原始字节。"""
+        frame = raw_frame if raw_frame is not None else \
+            build_modbus_frame(address, function, data)
+
+        self.ser.reset_input_buffer()
+        self.ser.write(frame)
+        self.ser.flush()
+
+        if not expect_reply:
+            time.sleep(0.05)
+            return self.ser.read_all()
+
+        deadline = time.monotonic() + (self.timeout if timeout is None else timeout)
+        head = self._read_exact(2, deadline)
+        if head is None:
+            return None
+
+        response_function = head[1]
+        if response_function & 0x80:
+            tail = self._read_exact(3, deadline)
+        elif response_function in (MODBUS_FUNCTION_READ_HOLDING,
+                                    MODBUS_FUNCTION_READ_INPUT):
+            byte_count = self._read_exact(1, deadline)
+            if byte_count is None:
+                return None
+            data_and_crc = self._read_exact(byte_count[0] + 2, deadline)
+            tail = None if data_and_crc is None else byte_count + data_and_crc
+        elif response_function in (MODBUS_FUNCTION_WRITE_SINGLE,
+                                    MODBUS_FUNCTION_WRITE_MULTIPLE):
+            tail = self._read_exact(6, deadline)
+        else:
+            tail = self._read_until_silence(deadline)
+
+        return None if tail is None else head + tail
+
+    def _read_exact(self, count, deadline):
+        data = b""
+        try:
+            while len(data) < count:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
+                self.ser.timeout = min(0.05, remaining)
+                chunk = self.ser.read(count - len(data))
+                if not chunk:
+                    continue
+                data += chunk
+            return data
+        finally:
+            self.ser.timeout = self.timeout
+
+    def _read_until_silence(self, deadline):
+        data = b""
+        try:
+            while time.monotonic() < deadline:
+                self.ser.timeout = min(0.05, deadline - time.monotonic())
+                chunk = self.ser.read(1)
+                if not chunk:
+                    break
+                data += chunk
+            return data
+        finally:
+            self.ser.timeout = self.timeout
 
 
 def run_all(host: Rs485Host):
@@ -417,35 +566,173 @@ def run_all(host: Rs485Host):
     return passed == len(results)
 
 
+def run_modbus_all(host: ModbusRtuHost):
+    """执行 M4-5f/M4-6 Modbus RTU 从站回归，不改变设备 ID 和波特率。"""
+    results = []
+
+    def check(name, condition, detail=""):
+        results.append(condition)
+        print("  [%s] %s %s" % ("PASS" if condition else "FAIL", name, detail))
+
+    def query(address, function, data=b""):
+        response = host.transact(address, function, data)
+        return verify_modbus_response(response, address, function)
+
+    def read_holding(address, start, quantity):
+        return query(address, MODBUS_FUNCTION_READ_HOLDING,
+                     struct.pack(">HH", start, quantity))
+
+    print("=== M4-5f/M4-6 Modbus RTU 板测 ===")
+
+    # 先读取当前从站 ID，后续测试使用实际地址，避免依赖固定配置。
+    ok, message, data = read_holding(1, 0x0010, 1)
+    slave = struct.unpack(">H", data)[0] if len(data) == 2 else 1
+    valid_slave = ok and len(data) == 2 and 1 <= slave <= 247
+    check("03 读取设备ID", valid_slave,
+          "id=%d" % slave if len(data) == 2 else message)
+    if not valid_slave:
+        slave = 1
+
+    # 03：读取 CH0/CH1 变比的两个 float32，共 4 个寄存器。
+    ok, message, ratio_data = read_holding(slave, 0x0000, 4)
+    ratios = struct.unpack(">ff", ratio_data) if len(ratio_data) == 8 else ()
+    ratios_valid = len(ratios) == 2 and all(
+        math.isfinite(value) and 0.0 <= value <= 100.0 for value in ratios)
+    check("03 读取变比寄存器", ok and len(ratio_data) == 8 and ratios_valid,
+          "ratio=%s" % ("/".join("%.3f" % value for value in ratios)
+                         if ratios else message))
+    if len(ratio_data) != 8:
+        ratios = (1.0, 1.0)
+        ratio_data = struct.pack(">ff", *ratios)
+
+    # 04：读取同一份采样快照中的 CH0/CH1。
+    ok, message, input_data = query(
+        slave, MODBUS_FUNCTION_READ_INPUT, struct.pack(">HH", 0x0000, 4))
+    inputs = struct.unpack(">ff", input_data) if len(input_data) == 8 else ()
+    inputs_valid = len(inputs) == 2 and all(
+        math.isfinite(value) and 0.0 <= value <= 1000.0 for value in inputs)
+    check("04 读取CH0/CH1输入寄存器", ok and len(input_data) == 8 and inputs_valid,
+          "ch0/ch1=%s" % ("/".join("%.3f" % value for value in inputs)
+                           if inputs else message))
+
+    # 06：写回当前 ID，验证旧地址下的标准回显，不触发通信参数变化。
+    ok, message, data = query(
+        slave, MODBUS_FUNCTION_WRITE_SINGLE,
+        struct.pack(">HH", 0x0010, slave))
+    check("06 写设备ID原值并回显",
+          ok and data == struct.pack(">HH", 0x0010, slave), message)
+
+    # 10：把当前两个变比原样写回，验证完整 float32 寄存器对和回显。
+    write_ratio_pdu = struct.pack(">HHB", 0x0000, 4, len(ratio_data)) + ratio_data
+    ok, message, data = query(
+        slave, MODBUS_FUNCTION_WRITE_MULTIPLE, write_ratio_pdu)
+    check("10 原样写回两个变比",
+          ok and data == struct.pack(">HH", 0x0000, 4), message)
+
+    ok, message, after_ratio_data = read_holding(slave, 0x0000, 4)
+    check("10 写入后变比回读一致",
+          ok and after_ratio_data == ratio_data,
+          "before=%s after=%s" % (ratio_data.hex(), after_ratio_data.hex()))
+
+    # 10 非法变比：必须报 0x03，且整批写入不能部分生效。
+    invalid_ratio_data = struct.pack(">ff", 101.0, ratios[1])
+    invalid_ratio_pdu = struct.pack(">HHB", 0x0000, 4,
+                                    len(invalid_ratio_data)) + invalid_ratio_data
+    ok, message, data = query(
+        slave, MODBUS_FUNCTION_WRITE_MULTIPLE, invalid_ratio_pdu)
+    check("10 非法变比→异常03",
+          ok and message == "EXCEPTION:03(非法值)" and data == b"", message)
+
+    ok, message, after_invalid_data = read_holding(slave, 0x0000, 4)
+    check("非法10后变比保持原值",
+          ok and after_invalid_data == ratio_data,
+          "after=%s" % after_invalid_data.hex())
+
+    # 映射空洞：完整合法帧交给业务层返回 0x02。
+    ok, message, data = read_holding(slave, 0x0008, 1)
+    check("03 读取空洞地址→异常02",
+          ok and message == "EXCEPTION:02(非法地址)" and data == b"", message)
+
+    # 通信参数非法值：06 写入超出从站地址范围的值，返回 0x03。
+    ok, message, data = query(
+        slave, MODBUS_FUNCTION_WRITE_SINGLE,
+        struct.pack(">HH", 0x0010, 248))
+    check("06 非法设备ID→异常03",
+          ok and message == "EXCEPTION:03(非法值)" and data == b"", message)
+
+    # 未支持功能码：返回请求功能码 | 0x80 和异常码 0x01。
+    ok, message, data = query(slave, 0x05, bytes.fromhex("00 00 00 00"))
+    check("05 未支持功能码→异常01",
+          ok and message == "EXCEPTION:01(非法功能)" and data == b"", message)
+
+    # 错误地址和错误 CRC 都必须静默丢弃。
+    wrong_slave = 2 if slave == 1 else 1
+    wrong_address_response = host.transact(
+        wrong_slave, MODBUS_FUNCTION_READ_HOLDING,
+        struct.pack(">HH", 0x0000, 2))
+    check("错误从站地址静默", wrong_address_response is None,
+          "无应答" if wrong_address_response is None else
+          wrong_address_response.hex())
+
+    bad_crc = bytearray(build_modbus_frame(
+        slave, MODBUS_FUNCTION_READ_HOLDING, struct.pack(">HH", 0x0000, 2)))
+    bad_crc[-1] ^= 0xFF
+    bad_crc_response = host.transact(
+        slave, MODBUS_FUNCTION_READ_HOLDING,
+        raw_frame=bytes(bad_crc))
+    check("错误CRC静默", bad_crc_response is None,
+          "无应答" if bad_crc_response is None else bad_crc_response.hex())
+
+    # 广播合法参数写：执行但不能返回任何响应。
+    broadcast_response = host.transact(
+        0, MODBUS_FUNCTION_WRITE_MULTIPLE, write_ratio_pdu,
+        expect_reply=False)
+    check("广播10合法写静默",
+          broadcast_response == b"",
+          "无应答" if broadcast_response == b"" else
+          broadcast_response.hex())
+
+    passed = sum(1 for condition in results if condition)
+    print("=== Modbus RTU %d/%d PASS ===" % (passed, len(results)))
+    return passed == len(results)
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__)
         sys.exit(1)
 
-    host = Rs485Host(sys.argv[1])
     mode = sys.argv[2]
 
-    if mode == "all":
-        sys.exit(0 if run_all(host) else 1)
+    if mode in ("modbus", "modbus_all"):
+        with ModbusRtuHost(sys.argv[1]) as host:
+            sys.exit(0 if run_modbus_all(host) else 1)
 
-    if mode == "one":
-        command = int(sys.argv[3], 16)
-        resp = host.transact(0x0001, command, 0x0001)
-        ok, msg, data = host.verify_response(resp, 0x0001, command, 0x0001)
-        print("%s %s data=%s" % ("OK" if ok else "FAIL", msg, data.hex()))
-        return
+    host = Rs485Host(sys.argv[1])
+    try:
+        if mode == "all":
+            sys.exit(0 if run_all(host) else 1)
 
-    if mode == "heartbeat":
-        # 七-7：上电发一次后每 30s 一次。上电后运行此模式，等 35s 应至少收到一帧
-        events = host.drain_events(35.0)
-        beats = [e for e in events if e[0] == 0x8888]
-        print("收到心跳 %d 帧" % len(beats))
-        ok = len(beats) >= 1 and beats[0][1].hex() == "0001"
-        print("A-04 心跳ID一致:", "PASS" if ok else "FAIL")
-        sys.exit(0 if ok else 1)
+        if mode == "one":
+            command = int(sys.argv[3], 16)
+            resp = host.transact(0x0001, command, 0x0001)
+            ok, msg, data = host.verify_response(resp, 0x0001, command, 0x0001)
+            print("%s %s data=%s" % ("OK" if ok else "FAIL", msg, data.hex()))
+            return
 
-    print("未知模式:", mode)
-    sys.exit(1)
+        if mode == "heartbeat":
+            # 七-7：上电发一次后每 30s 一次。上电后运行此模式，等 35s 应至少收到一帧
+            events = host.drain_events(35.0)
+            beats = [e for e in events if e[0] == 0x8888]
+            print("收到心跳 %d 帧" % len(beats))
+            ok = len(beats) >= 1 and beats[0][1].hex() == "0001"
+            print("A-04 心跳ID一致:", "PASS" if ok else "FAIL")
+            sys.exit(0 if ok else 1)
+
+        print("未知模式:", mode)
+        sys.exit(1)
+    finally:
+        host.close()
 
 
 if __name__ == "__main__":

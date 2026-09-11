@@ -3,7 +3,7 @@
 > 文档版本:V1.0 | 日期:2026-08-09
 > 定位:本文是《01_PROJECT_OVERVIEW.md》第十五章 M0~M7 里程碑的**执行级展开**——把每个里程碑翻译成「动作清单 → 产出文件 → 依赖 → 卡点 → 验收关卡」。
 > 使用方式:开发时照表执行,验收时对照《01》第十四章(A-01~Q-02)与第十四-2(稳定性)逐条验证;技术原理见《02_TECH_STACK.md》。
-> 当前工程状态:M0~M3 已完成;M4 采集与通信阶段已完成 M4-0~M4-4——采样滤波换算、USART0 CLI 全量、RTC 日历、RS485 自定义协议全量(含自动上报与心跳),均板测通过;当前进入 M4-5 Modbus RTU 从站与 M4-6 Python 回归,完成后 M4 收口。
+> 当前工程状态:M0~M3 已完成;M4 采集与通信阶段已完成 M4-0~M4-6——采样滤波换算、USART0 CLI 全量、RTC 日历、RS485 自定义协议全量(含自动上报与心跳)、Modbus RTU 从站及 Python 回归均已完成板测;当前进入 M5 TF 卡与告警。
 
 ---
 
@@ -444,7 +444,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 - **M4-4a/4b/4c 已板测通过**,打包为本地提交 `31ed947`(M4:完成RS485自定义协议链路与命令分发,15 文件 +1683/-6,未推送)。4a:`Middleware/Protocol/protocol_stream.c` 流式帧解析器(搜帧头/半帧/粘包/噪声前缀/CRC错重同步/坏长度丢弃,坏帧快照供错误应答),PC Unity 86 用例全绿;4b:ProtocolTask 集成——USART1 RX→解析器→类型/地址/重复帧三道过滤→request/result 双队列→ControlTask 经 `app_protocol.c` 业务分发(与 CLI 命令表分离)→编码回发,重复帧命中缓存原样重发,板测 9/9;4c:13 条命令(重启/版本/ID/波特率/DAC/阈值/变比/TF状态/自检)、广播写静默执行(允许表)、忙碌策略框架、K-01/K-02 坏帧错误应答、0x0101 应答后系统复位,板测 27/27。主机端测试工具 `test/rs485_host.py`(拼帧/CRC16-Modbus/自动判定)随步建成。
 - **M4-4d 已板测通过**,打包为本地提交 `a3683cf`(M4:完成自动上报与心跳,RS485 协议链路收官,5 文件 +320/-18,未推送)。0x0302/0x0303/0x0304 自动上报启停与间隔设置;0x0382 事件帧 12B(RTC Unix 时间戳 + CH0/CH1 大端 float,取共享区最新快照),实测 2s 间隔下 2.6s 窗口收到 3 帧;0x8888 心跳上电一次后每 30s,载荷 2B 设备 ID(A-04 达成);忙碌策略通电——上报期间仅放行 0x0303/0x03AA,其余回 0x05(H-02 达成);LED1/2/5 联动补全。板测 35/35 + 心跳全 PASS。
 - **已达成验收项**:A-01/A-02/A-04、B-01、C-01、D-01/D-02、E-01/E-02、G-01、H-01/H-02/H-03、K-01/K-02/K-03;L-01/M-01 的"生效"半程达成,持久化半程归 M5。ROM 54.6KB/42.6%(上限 128KB)。
-- **M4 待办**:M4-5 = Modbus RTU 从站(寄存器映射/功能码 03/04/06/10/异常响应,protocol_mode 分派——复用 request/result 双队列与 `app_protocol` 分发骨架,Modbus CRC 小端与自定义协议大端方向相反);M4-6 = Python 回归测试(`rs485_host.py` 扩展 Modbus 用例与异常注入)。已知文档留白补白:事件帧序列号=0;上报间隔范围 1~86400s;心跳载荷=2B 设备 ID。
+- **M4-5/M4-6 已完成**:Modbus RTU 从站已完成寄存器映射、03/04/06/10 功能码、异常响应、`protocol_mode` 分派及 request/result 队列链路;`rs485_host.py` 已扩展 Modbus 8E1 回归和异常注入。已知文档留白补白:事件帧序列号=0;上报间隔范围 1~86400s;心跳载荷=2B 设备 ID。
 
 ---
 
@@ -479,7 +479,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 - ProtocolTask 负责收帧/协议分派/发帧；ControlTask 调用独立 app_modbus 业务层。复用现有 request/result 双队列并扩展载荷容量，保证最长已映射事务（10 写 8 寄存器的数据区 21B，03 读 8 寄存器响应数据区 17B）完整承载。跨任务不传指向可复用 RX 缓冲区的裸指针；静态缓冲优先，不把大 ADU 放任务栈。
 - M4-5b：补请求解析及异常编码，保留 M2 原接口/测试；M4-5c：寄存器业务；M4-5d：RTU 收帧；M4-5e：队列与模式集成；M4-5f/M4-6：扩展 rs485_host.py 与板测。
 - 每步对应 PC 测试及 App 构建，通过当次 MDK/build/*.map 记录 ROM/RAM 和增量，ROM 上限 128KB；提交前复核 IndustrialEmbedded-App.code-workspace 的 cortex-debug 设置。仅用户要求时提交，不推送。
-- 板测 COM9，冷启动可用约 5.5s；影响采样结果的写入后等待 400ms。覆盖 03/04/06/10、异常、广播、参数原子性、ID/波特率及模式往返切换，并回归自定义协议 35/35 和心跳。亚毫秒时序须用板侧计时或逻辑分析仪验证，Windows Python sleep 不作为严格时序证据。
+- 板测端口：COM9 连接 USART0，仅用于 CLI 模式切换；COM14 连接 USART1/RS485，用于自定义协议和 Modbus RTU 收发。冷启动可用约 5.5s；影响采样结果的写入后等待 400ms。覆盖 03/04/06/10、异常、广播、参数原子性、ID/波特率及模式往返切换，并回归自定义协议 35/35 和心跳。亚毫秒时序须用板侧计时或逻辑分析仪验证，Windows Python sleep 不作为严格时序证据。
 
 规范参考：https://www.modbus.org/docs/Modbus_over_serial_line_V1_02.pdf
 
@@ -507,7 +507,15 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 - `ProtocolTask` 按 `app_config.protocol_mode` 同步协议模式：自定义模式使用 USART1 8N1 + DMA0 CH5 + IDLE；Modbus 模式使用 USART1 8E1 + RBNE 逐字节接收，从 RTU 帧接口取出完整 ADU，调用 `modbus_rtu_request_decode()` 后填充 request 队列。CRC/截断/非法地址等结构错误静默丢弃，完整未知功能码和数量异常交给业务层生成标准异常响应。
 - Modbus 响应经 `modbus_rtu_encode()` 或 `modbus_rtu_exception_encode()` 生成，CRC 低字节先发；广播不响应。ID/波特率修改在旧响应发送完成后应用，模式切换清空自定义解析器和重复应答缓存，并关闭自动上报/心跳。
 - request/result 队列已扩容并纳入模式代次、请求地址、功能字段和通信参数待应用字段；当前模式代次用于 Modbus 结果匹配，后续仍需补充更完整的模式切换事务协调和队列清理策略。
-- `app_config` 增加 Modbus 地址约束：进入 Modbus 及 Modbus 模式下修改设备 ID 均限制为 1~247。AC5 构建通过：ROM=62420B（60.96KiB，47.6%），RAM=28136B（27.48KiB，14.3%）；公共/协议 98 项、业务 15 项、RTU 时序/BSP 接收测试通过。map 已确认 `control_execute_modbus_request`、`protocol_process_modbus_frames`、`protocol_process_modbus_request` 和 `app_modbus_execute` 均被链接。当前证据为 PC 与构建验证，COM9 实际 Modbus 收发、线级 8E1 和 O-01 仍待板测；workspace 的 `cortex-debug.variableUseNaturalFormat` 保持为 `true`。
+- `app_config` 增加 Modbus 地址约束：进入 Modbus 及 Modbus 模式下修改设备 ID 均限制为 1~247。AC5 构建通过：ROM=62420B（60.96KiB，47.6%），RAM=28136B（27.48KiB，14.3%）；公共/协议 98 项、业务 15 项、RTU 时序/BSP 接收测试通过。map 已确认 `control_execute_modbus_request`、`protocol_process_modbus_frames`、`protocol_process_modbus_request` 和 `app_modbus_execute` 均被链接。COM9 模式切换、COM14 实际 Modbus 收发及 O-01 板测结果见 M4-5f/M4-6 记录；workspace 的 `cortex-debug.variableUseNaturalFormat` 保持为 `true`。
+
+### M4-5f/M4-6 Python 回归与板级验收（2026-09-11）
+
+- `test/rs485_host.py` 新增 Modbus RTU 主机：COM14 使用 115200 8E1，CRC16-Modbus 低字节先发，支持 03/04/06/10 响应解析、异常响应校验和静默帧检查；新增 `test/test_rs485_host.py`，主机帧单元测试 4/4 通过。
+- 端口职责已按实物连接固定：COM9 为 USART0/115200 8N1，用于发送 `protocol` 和模式值；COM14 为 USART1/RS485/115200 8E1，用于 Modbus RTU 和自定义 RS485 协议。测试由 COM9 将 `protocol` 从 0 切换为 1 后开始，Modbus 测试完成后再切回 0。
+- Modbus 功能性板测 `python test/rs485_host.py COM14 modbus`：14/14 通过。覆盖设备 ID、变比和输入寄存器读取，06 原值回显，10 完整 float32 写入与回读，非法变比异常 03 及整批写入原子性，空洞地址异常 02，非法 ID 异常 03，未支持功能码异常 01，错误地址/错误 CRC 静默以及广播合法写静默。实测 ID=1、变比=1.000/1.000、CH0=2.279V、CH1=1.651V。
+- 自定义 RS485 回归 `python test/rs485_host.py COM14 all`：35/35 通过；包含自动上报、上报期间忙碌策略、停止上报、异常帧、DAC/阈值/变比业务、重启恢复。重启后约 5.5s 恢复通信。随后心跳回归收到 1 帧，A-04 设备 ID 一致通过。
+- 本次证据覆盖功能性串口收发、模式往返和 O-01 所需 03/06/10（另含 04）板测；未替代逻辑分析仪对亚毫秒 IRQ 延迟、t1.5/t3.5 临界边界的严格线级测量。全部配置仍为运行时生效，持久化继续归 M5。
 
 ## 八、M5:TF 卡与告警
 
