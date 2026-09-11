@@ -1,12 +1,14 @@
 #include "app_config_ini.h"
 #include "app_config.h"
 
-/* 解析 length 字节的变比片段，语法为整数或整数加 1~6 位小数。
- * 用有界整数保存整数/小数部分，在 float 舍入前检查 0~100 范围。
+/* 解析 length 字节的非负十进制片段，语法为整数或整数加 1~6 位小数。
+ * maximum 为允许的整数上限；用有界整数保存整数/小数部分，
+ * 在 float 舍入前检查 0~maximum 范围，供变比和阈值入口共用。
  * 成功转换为 float 写入 out 并返回 1；失败返回 0 且 out 不变。
  * value 无需 NUL 终止；不选择通道，不修改运行配置或访问存储。
  */
-int app_config_ini_ratio_parse(const char *value, uint16_t length, float *out)
+static int app_config_ini_decimal_parse(const char *value, uint16_t length,
+                                        uint16_t maximum, float *out)
 {
     uint16_t index;
     uint16_t decimal_digits;
@@ -30,9 +32,9 @@ int app_config_ini_ratio_parse(const char *value, uint16_t length, float *out)
         {
             return 0;
         }
-        /* 上轮整数部分 <= 100，本次最大 1009，不会溢出。 */
+        /* 上轮 <= uint16_t maximum，本次最大 655359，uint32_t 不会溢出。 */
         integer_part = integer_part * 10U + (uint32_t)(current - '0');
-        if (integer_part > (uint32_t)APP_CONFIG_RATIO_MAX)
+        if (integer_part > maximum)
         {
             return 0;
         }
@@ -68,8 +70,8 @@ int app_config_ini_ratio_parse(const char *value, uint16_t length, float *out)
         }
     }
 
-    /* 100 后只能带全零小数；必须在浮点转换前拒绝微小越界。 */
-    if ((integer_part == (uint32_t)APP_CONFIG_RATIO_MAX) &&
+    /* 整数达到上限后只能带全零小数，先于浮点转换拒绝微小越界。 */
+    if ((integer_part == maximum) &&
         (fraction_part != 0U))
     {
         return 0;
@@ -77,6 +79,24 @@ int app_config_ini_ratio_parse(const char *value, uint16_t length, float *out)
 
     *out = (float)integer_part + (float)fraction_part / (float)scale;
     return 1;
+}
+
+/* 解析 value 的 length 字节为 0~100 变比，沿用公共配置上限。
+ * 成功返回 1 并写入 out，失败返回 0 且输出不变；不修改运行配置。
+ */
+int app_config_ini_ratio_parse(const char *value, uint16_t length, float *out)
+{
+    return app_config_ini_decimal_parse(value, length,
+        (uint16_t)APP_CONFIG_RATIO_MAX, out);
+}
+
+/* 解析 value 的 length 字节为 0~500 阈值，沿用公共配置上限。
+ * 成功返回 1 并写入 out，失败返回 0 且输出不变；不选通道或触发告警。
+ */
+int app_config_ini_limit_parse(const char *value, uint16_t length, float *out)
+{
+    return app_config_ini_decimal_parse(value, length,
+        (uint16_t)APP_CONFIG_LIMIT_MAX, out);
 }
 
 /* 解析 length 字节的十进制告警模式片段，允许前导零。
