@@ -76,6 +76,69 @@ static void test_semantics_are_deferred(void)
     TEST_ASSERT_EQUAL_UINT16(3U, pair.value_length);
 }
 
+/* 验证十六进制转换、大小写及上下界；本层允许超过 Modbus 上限的 ID。 */
+static void test_device_id_valid_values(void)
+{
+    const char *values[] = {"0001", "0010", "00F7", "00f8", "aBcD", "FFFE"};
+    const uint16_t expected[] = {1U, 16U, 247U, 248U, 0xABCDU, 0xFFFEU};
+    uint16_t out;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(1,
+            app_config_ini_device_id_parse(values[i], 4U, &out));
+        TEST_ASSERT_EQUAL_UINT16(expected[i], out);
+    }
+}
+
+/* 验证宽度、字符及值域错误均失败，且中途错误不覆盖已有输出。 */
+static void test_device_id_invalid_values_preserve_output(void)
+{
+    const char *values[] = {"", "1", "001", "00001", "0x01", "0000", "FFFF",
+        "+001", "-001", " 001", "001 ", "00G1", "123g", "1.00", "01\t1", "001\n"};
+    uint16_t out = 0x4321U;
+    unsigned i;
+    for (i = 0U; i < sizeof(values) / sizeof(values[0]); i++)
+    {
+        TEST_ASSERT_EQUAL_INT(0, app_config_ini_device_id_parse(
+            values[i], (uint16_t)strlen(values[i]), &out));
+        TEST_ASSERT_EQUAL_UINT16(0x4321U, out);
+    }
+}
+
+/* 验证精确 4 字节数组无需结束符，嵌入 NUL 与空指针被拒绝。 */
+static void test_device_id_buffer_arguments(void)
+{
+    const char raw[4] = {'0', '1', '2', '3'};
+    const char embedded_nul[4] = {'0', '1', '\0', '3'};
+    uint16_t out = 0U;
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_device_id_parse(raw, 4U, &out));
+    TEST_ASSERT_EQUAL_UINT16(0x0123U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_device_id_parse(embedded_nul, 4U, &out));
+    TEST_ASSERT_EQUAL_UINT16(0x0123U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_device_id_parse(NULL, 4U, &out));
+    TEST_ASSERT_EQUAL_UINT16(0x0123U, out);
+    TEST_ASSERT_EQUAL_INT(0, app_config_ini_device_id_parse(raw, 4U, NULL));
+}
+
+/* 串联单行拆分与 ID 解析，确认值片段可以直接消费且原行保持不变。 */
+static void test_device_id_from_line(void)
+{
+    const char line[] = " \tdevice_id = 00f7 \t";
+    char before[sizeof(line)];
+    app_config_ini_pair_t pair;
+    uint16_t out = 0U;
+    memcpy(before, line, sizeof(line));
+    TEST_ASSERT_EQUAL_INT(APP_CONFIG_INI_LINE_PAIR,
+        app_config_ini_line_parse(line, sizeof(line) - 1U, &pair));
+    TEST_ASSERT_EQUAL_UINT16(9U, pair.key_length);
+    TEST_ASSERT_EQUAL_MEMORY("device_id", line + pair.key_offset, pair.key_length);
+    TEST_ASSERT_EQUAL_INT(1, app_config_ini_device_id_parse(
+        line + pair.value_offset, pair.value_length, &out));
+    TEST_ASSERT_EQUAL_UINT16(247U, out);
+    TEST_ASSERT_EQUAL_MEMORY(before, line, sizeof(line));
+}
+
 /* PC 测试入口：返回 Unity 失败数供命令行判断。 */
 int main(void)
 {
@@ -84,5 +147,9 @@ int main(void)
     RUN_TEST(test_skip_and_errors_preserve_output);
     RUN_TEST(test_boundaries_and_arguments);
     RUN_TEST(test_semantics_are_deferred);
+    RUN_TEST(test_device_id_valid_values);
+    RUN_TEST(test_device_id_invalid_values_preserve_output);
+    RUN_TEST(test_device_id_buffer_arguments);
+    RUN_TEST(test_device_id_from_line);
     return UNITY_END();
 }

@@ -29,4 +29,12 @@ typedef struct
 app_config_ini_line_status_t app_config_ini_line_parse(
     const char *line, uint16_t length, app_config_ini_pair_t *out);
 
+/* 将已去除空白的 value 片段解析为设备 ID：恰好 4 位十六进制，
+ * 范围 0001~FFFE，允许大小写，不要求 NUL 终止；不验证键名。
+ * 成功返回 1 并写入 out；失败返回 0 且保持 out 不变。
+ * value/out 必须非 NULL。协议相关的 ID 约束由整组配置校验负责。
+ */
+int app_config_ini_device_id_parse(const char *value, uint16_t length,
+                                    uint16_t *out);
+
 #endif /* APP_CONFIG_INI_H */

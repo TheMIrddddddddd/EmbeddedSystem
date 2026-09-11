@@ -1,4 +1,57 @@
 #include "app_config_ini.h"
+#include "app_config.h"
+
+/* 解析已去除空白的 4 字节十六进制值；逐字节转换到局部变量。
+ * value 无需 NUL 终止，length 必须为 4，out 接收 0001~FFFE。
+ * 任一字符或范围非法返回 0；全部通过后才写出并返回 1。
+ * 只解析值，不改运行配置；Modbus 地址范围留给完整配置校验。
+ */
+int app_config_ini_device_id_parse(const char *value, uint16_t length,
+                                    uint16_t *out)
+{
+    uint16_t parsed;
+    uint16_t digit;
+    uint16_t index;
+    char current;
+
+    if ((value == 0) || (out == 0) || (length != 4U))
+    {
+        return 0;
+    }
+
+    parsed = 0U;
+    for (index = 0U; index < 4U; index++)
+    {
+        current = value[index];
+        if ((current >= '0') && (current <= '9'))
+        {
+            digit = (uint16_t)(current - '0');
+        }
+        else if ((current >= 'A') && (current <= 'F'))
+        {
+            digit = (uint16_t)(current - 'A' + 10);
+        }
+        else if ((current >= 'a') && (current <= 'f'))
+        {
+            digit = (uint16_t)(current - 'a' + 10);
+        }
+        else
+        {
+            return 0;
+        }
+        /* 固定最多四位，累计值不会超过 uint16_t 的 0xFFFF。 */
+        parsed = (uint16_t)((parsed << 4U) | digit);
+    }
+
+    if ((parsed < APP_CONFIG_DEVICE_ID_MIN) ||
+        (parsed > APP_CONFIG_DEVICE_ID_MAX))
+    {
+        return 0;
+    }
+
+    *out = parsed;
+    return 1;
+}
 
 /* 判断一个字节是否为契约允许的行内空白；空格/Tab 返回 1，其余返回 0。 */
 static int app_config_ini_space(char value)
