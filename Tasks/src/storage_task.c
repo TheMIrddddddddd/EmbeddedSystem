@@ -86,6 +86,7 @@ static storage_record_file_t s_storage_sample_file;
 static storage_record_file_t s_storage_alarm_file;
 static storage_record_file_t s_storage_audit_file;
 static uint32_t s_storage_audit_boot_count;
+static uint8_t s_storage_audit_boot_written;
 static char s_storage_record_line[STORAGE_RECORD_TEXT_MAX];
 static uint8_t s_storage_record_scan_buffer[128U];
 static storage_task_record_request_t s_storage_record_request;
@@ -110,6 +111,7 @@ static void storage_task_record_files_close(void);
 static int storage_task_record_directories_prepare(void);
 static int storage_task_audit_open(uint8_t write_boot_line);
 static void storage_task_record_setup_after_mount(uint8_t write_boot_line);
+static int storage_task_audit_write_boot_line(void);
 
 static void storage_sdio_initialize(void)
 {
@@ -230,7 +232,8 @@ static void storage_card_insert_process(void)
         return;
     }
     storage_fatfs_mount();
-    storage_task_record_setup_after_mount(0U);
+    storage_task_record_setup_after_mount(
+        (s_storage_audit_boot_written == 0U) ? 1U : 0U);
     if (storage_mount_policy_retry(
             (board_sdio_card_present() != 0U) ? 1U : 0U,
             s_storage_fatfs_mounted,
@@ -715,16 +718,61 @@ static int storage_task_text_terminate(char *buffer, uint16_t capacity,
     return 1;
 }
 
-/* 打开当前 boot 对应的审计文件，并在首次打开时写入 boot #N。 */
-static int storage_task_audit_open(uint8_t write_boot_line)
+/* 写入当前 boot 文件的唯一 boot #N 行。 */
+static int storage_task_audit_write_boot_line(void)
 {
     board_rtc_time_t time;
     char timestamp[24];
     uint16_t position = 0U;
     uint16_t time_length = 0U;
+
+    if ((s_storage_audit_file.open == 0U) ||
+        (s_storage_audit_boot_written != 0U))
+    {
+        return (s_storage_audit_boot_written != 0U) ? 1 : 0;
+    }
+    if ((board_rtc_time_get(&time) == 0) ||
+        (storage_record_format_time(&time, timestamp, sizeof(timestamp),
+                                    &time_length) == 0) ||
+        (storage_task_text_append(s_storage_record_line,
+                                   sizeof(s_storage_record_line), &position,
+                                   "[") == 0) ||
+        (storage_task_text_append(s_storage_record_line,
+                                   sizeof(s_storage_record_line), &position,
+                                   timestamp) == 0) ||
+        (storage_task_text_append(s_storage_record_line,
+                                   sizeof(s_storage_record_line), &position,
+                                   "] boot #") == 0) ||
+        (storage_task_text_u32(s_storage_record_line,
+                               sizeof(s_storage_record_line), &position,
+                               s_storage_audit_boot_count) == 0) ||
+        (storage_task_text_append(s_storage_record_line,
+                                   sizeof(s_storage_record_line), &position,
+                                   "\r\n") == 0) ||
+        (storage_task_text_terminate(s_storage_record_line,
+                                     sizeof(s_storage_record_line), &position) == 0) ||
+        (storage_task_record_write_line(&s_storage_audit_file,
+                                        s_storage_record_line,
+                                        (uint16_t)(position - 1U), 0U) == 0))
+    {
+        return 0;
+    }
+    s_storage_audit_boot_written = 1U;
+    (void)time_length;
+    return 1;
+}
+
+/* 打开当前 boot 对应的审计文件，并按需补写 boot #N。 */
+static int storage_task_audit_open(uint8_t write_boot_line)
+{
+    uint16_t position = 0U;
     FRESULT result;
     if (s_storage_fatfs_mounted == 0U || s_storage_audit_boot_count == 0U) return 0;
-    if (s_storage_audit_file.open != 0U) return 1;
+    if (s_storage_audit_file.open != 0U)
+    {
+        return (write_boot_line != 0U) ?
+               storage_task_audit_write_boot_line() : 1;
+    }
     if (storage_task_record_directories_prepare() == 0) return 0;
     (void)memset(s_storage_audit_file.path, 0, sizeof(s_storage_audit_file.path));
     if ((storage_task_text_append(s_storage_audit_file.path, sizeof(s_storage_audit_file.path), &position, "0:/audit/boot_") == 0) ||
@@ -736,23 +784,12 @@ static int storage_task_audit_open(uint8_t write_boot_line)
     if (result != FR_OK) return 0;
     s_storage_audit_file.open = 1U;
     s_storage_audit_file.row_count = 0U;
-    if (write_boot_line == 0U) return 1;
-    if (board_rtc_time_get(&time) == 0) { storage_task_record_file_close(&s_storage_audit_file); return 0; }
-    if (storage_record_format_time(&time, timestamp, sizeof(timestamp), &time_length) == 0) { storage_task_record_file_close(&s_storage_audit_file); return 0; }
-    position = 0U;
-    if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "[") == 0) ||
-        (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, timestamp) == 0) ||
-        (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "] boot #") == 0) ||
-        (storage_task_text_u32(s_storage_record_line, sizeof(s_storage_record_line), &position, s_storage_audit_boot_count) == 0) ||
-        (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "\r\n") == 0) ||
-        (storage_task_text_terminate(s_storage_record_line, sizeof(s_storage_record_line), &position) == 0) ||
-        (storage_task_record_write_line(&s_storage_audit_file, s_storage_record_line,
-                                        (uint16_t)(position - 1U), 0U) == 0))
+    if ((write_boot_line != 0U) &&
+        (storage_task_audit_write_boot_line() == 0))
     {
         storage_task_record_file_close(&s_storage_audit_file);
         return 0;
     }
-    (void)time_length;
     return 1;
 }
 
@@ -1117,6 +1154,7 @@ static void storage_task(void *argument)
 int storage_task_create(void)
 {
     s_storage_task_sdio_diag.state = STORAGE_TASK_SDIO_STATE_NOT_STARTED;
+    s_storage_audit_boot_written = 0U;
 
     s_storage_request_queue_handle = xQueueCreateStatic(
         STORAGE_TASK_REQUEST_QUEUE_LENGTH,
