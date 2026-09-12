@@ -548,6 +548,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 - DMA 写启动时序修正: `board_sdio_write_block_dma_polling()` 按 `CMD24 → 数据状态机 → 配置并使能 DMA 通道 → 打开 SDIO DMA 请求` 启动,避免 SDIO 请求早于 DMA 通道就绪而触发 `FEE`。Keil AC5 重构建 `0 error / 0 warning`。
 - 修正后板测:上电自动挂载 [PASS];实际告警 `f_open/f_write/f_sync` 写入后 `0x0701=01` 保持;TF 卡拔出并重新插入后 COM9 自检、FatFs 重挂载和 `0x0701=01` 均 [PASS];重插后再次告警写入通过,Flash 告警记录由 6 条增至 7 条,采样查询持续正常。
 - 当前板测遗留状态:设备中的告警记录为测试数据,未清除;CH0/CH1 当前运行阈值为 `3.00 / 12.50`,生产阈值尚待确认,不能直接作为出厂配置。
+- FatFs 后端策略调整(2026-09-13):按现场稳定性要求,`Middleware/FatFs/src/diskio.c` 改回 `board_sdio_read_block()` / `board_sdio_write_block()` 的 CPU FIFO 轮询路径,不再调用 SDIO DMA 接口;DMA1/Channel6 的 BSP 底层能力保留,但不属于当前 FatFs 文件访问链路,后续 M5 文件验收以轮询路径为准。
 
 ---
 
