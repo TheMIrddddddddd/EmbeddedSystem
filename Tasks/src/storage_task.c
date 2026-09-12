@@ -384,13 +384,17 @@ static void storage_task_process_request(void)
     switch (request.operation)
     {
     case STORAGE_TASK_REQUEST_READ_BLOCK:
-        status = board_sdio_read_block(request.block_number, request.buffer);
+        status = board_sdio_read_block_dma_polling(
+            request.block_number,
+            request.buffer);
         s_storage_task_sdio_diag.read_status =
             (uint32_t)status;
         break;
     
     case STORAGE_TASK_REQUEST_WRITE_BLOCK:
-        status = board_sdio_write_block(request.block_number, request.buffer);
+        status = board_sdio_write_block_dma_polling(
+            request.block_number,
+            request.buffer);
         s_storage_task_sdio_diag.write_status =
             (uint32_t)status;
 
@@ -704,7 +708,7 @@ static int storage_task_format_audit_event(
     }
     if (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "\r\n") == 0) return 0;
     if (storage_task_text_terminate(s_storage_record_line, sizeof(s_storage_record_line), &position) == 0) return 0;
-    *length = (uint16_t)(position - 1U);
+    *length = position;
     (void)timestamp_length;
     return 1;
 }
@@ -753,7 +757,7 @@ static int storage_task_audit_write_boot_line(void)
                                      sizeof(s_storage_record_line), &position) == 0) ||
         (storage_task_record_write_line(&s_storage_audit_file,
                                         s_storage_record_line,
-                                        (uint16_t)(position - 1U), 0U) == 0))
+                                        position, 0U) == 0))
     {
         return 0;
     }
@@ -1509,4 +1513,10 @@ int storage_task_sdio_diag_get(storage_task_sdio_diag_t *diag)
 uint8_t storage_task_fatfs_mounted_get(void)
 {
     return (s_storage_fatfs_mounted != 0U) ? 1U : 0U;
+}
+
+/* 返回最近一次 FatFs 挂载结果，供系统自检定位底层状态。 */
+uint32_t storage_task_fatfs_mount_result_get(void)
+{
+    return (uint32_t)s_storage_fatfs_mount_result;
 }

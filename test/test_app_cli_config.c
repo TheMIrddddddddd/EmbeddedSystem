@@ -19,6 +19,8 @@ static storage_task_persist_result_t s_result;
 static uint8_t s_result_available;
 static uint32_t s_last_baudrate;
 static uint32_t s_event_bits;
+static uint8_t s_fatfs_mounted;
+static uint32_t s_fatfs_mount_result;
 
 void test_critical_enter(void)
 {
@@ -153,7 +155,17 @@ int storage_task_sdio_diag_get(storage_task_sdio_diag_t *diag)
 
 uint8_t storage_task_fatfs_mounted_get(void)
 {
-    return 1U;
+    return s_fatfs_mounted;
+}
+
+uint32_t storage_task_fatfs_mount_result_get(void)
+{
+    return s_fatfs_mount_result;
+}
+
+uint32_t board_sdio_dma_polling_error_get(void)
+{
+    return 0U;
 }
 
 int storage_task_persist_request_submit(
@@ -247,6 +259,8 @@ void setUp(void)
     s_result_available = 0U;
     s_last_baudrate = 0U;
     s_event_bits = 0U;
+    s_fatfs_mounted = 1U;
+    s_fatfs_mount_result = 0U;
     TEST_ASSERT_EQUAL_INT(1, app_config_init());
 }
 
@@ -393,6 +407,24 @@ static void test_config_import_open_error_reports_status(void)
     TEST_ASSERT_NOT_NULL(strstr(s_output, "config import file open error: 5"));
 }
 
+static void test_system_test_reports_fatfs_mount_state(void)
+{
+    app_cli_execute_line("test");
+
+    TEST_ASSERT_NOT_NULL(strstr(s_output, "FatFs      : Mounted"));
+    TEST_ASSERT_NOT_NULL(strstr(s_output, "=== Test Result: PASS ==="));
+}
+
+static void test_system_test_reports_fatfs_mount_error(void)
+{
+    s_fatfs_mounted = 0U;
+    s_fatfs_mount_result = 13U;
+
+    app_cli_execute_line("test");
+
+    TEST_ASSERT_NOT_NULL(strstr(s_output, "FatFsErr=13"));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -404,5 +436,7 @@ int main(void)
     RUN_TEST(test_matching_result_is_required_before_clearing_pending_state);
     RUN_TEST(test_config_import_parse_error_reports_line);
     RUN_TEST(test_config_import_open_error_reports_status);
+    RUN_TEST(test_system_test_reports_fatfs_mount_state);
+    RUN_TEST(test_system_test_reports_fatfs_mount_error);
     return UNITY_END();
 }

@@ -29,9 +29,6 @@
 #define BOARD_SDIO_R1_CURRENT_STATE_MASK        0x00001E00U
 #define BOARD_SDIO_CARD_STATE_TRANSFER          0x00000800U
 
-#define BOARD_SDIO_DMA_WORD_COUNT \
-    (BOARD_SDIO_BLOCK_SIZE / 4U)
-
 #define BOARD_SDIO_FIFO_ADDRESS                 0x40012C80U
 
 static volatile uint32_t s_board_sdio_dma_irq_events;
@@ -45,6 +42,35 @@ static volatile uint8_t s_board_sdio_dma_busy;
 static volatile uint8_t s_board_sdio_dma_fee_seen;
 static volatile uint8_t s_board_sdio_dma_fee_chen_snapshot;
 static volatile uint8_t s_board_sdio_dma_fee_chen_off_seen;
+static volatile uint32_t s_board_sdio_dma_polling_error;
+
+static uint32_t board_sdio_dma_polling_sdio_error_flags(void)
+{
+    uint32_t flags = BOARD_SDIO_DMA_POLL_ERROR_NONE;
+
+    if (SET == sdio_flag_get(SDIO_FLAG_DTCRCERR))
+    {
+        flags |= BOARD_SDIO_DMA_POLL_ERROR_DTCRCERR;
+    }
+    if (SET == sdio_flag_get(SDIO_FLAG_DTTMOUT))
+    {
+        flags |= BOARD_SDIO_DMA_POLL_ERROR_DTTMOUT;
+    }
+    if (SET == sdio_flag_get(SDIO_FLAG_RXORE))
+    {
+        flags |= BOARD_SDIO_DMA_POLL_ERROR_RXORE;
+    }
+    if (SET == sdio_flag_get(SDIO_FLAG_TXURE))
+    {
+        flags |= BOARD_SDIO_DMA_POLL_ERROR_TXURE;
+    }
+    if (SET == sdio_flag_get(SDIO_FLAG_STBITE))
+    {
+        flags |= BOARD_SDIO_DMA_POLL_ERROR_STBITE;
+    }
+
+    return flags;
+}
 
 static void board_sdio_data_cleanup(void)
 {
@@ -141,7 +167,7 @@ static board_sdio_status_t board_sdio_dma_fifo_check(void)
 
 static void board_sdio_dma_config(const uint8_t *buffer,uint32_t direction)
 {
-    dma_single_data_parameter_struct dma_config;
+    dma_multi_data_parameter_struct dma_config;
 
     rcu_periph_clock_enable(RCU_DMA1);
 
@@ -149,19 +175,31 @@ static void board_sdio_dma_config(const uint8_t *buffer,uint32_t direction)
 
     dma_deinit(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL);
 
-    dma_single_data_para_struct_init(&dma_config);
+    dma_multi_data_para_struct_init(&dma_config);
 
     dma_config.periph_addr = BOARD_SDIO_FIFO_ADDRESS;
-    dma_config.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
     dma_config.memory0_addr = (uint32_t)buffer;
-    dma_config.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
-    dma_config.periph_memory_width = DMA_PERIPH_WIDTH_32BIT;
-    dma_config.circular_mode = DMA_CIRCULAR_MODE_DISABLE;
     dma_config.direction = direction;
-    dma_config.number = BOARD_SDIO_DMA_WORD_COUNT;
-    dma_config.priority = DMA_PRIORITY_HIGH;
+    dma_config.number = 0U;
+    dma_config.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
+    dma_config.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
+    dma_config.periph_width = DMA_PERIPH_WIDTH_32BIT;
+    dma_config.memory_width = DMA_MEMORY_WIDTH_32BIT;
+    dma_config.priority = DMA_PRIORITY_ULTRA_HIGH;
+    dma_config.periph_burst_width = DMA_PERIPH_BURST_4_BEAT;
+    dma_config.memory_burst_width = DMA_MEMORY_BURST_4_BEAT;
+    dma_config.circular_mode = DMA_CIRCULAR_MODE_DISABLE;
+    dma_config.critical_value = DMA_FIFO_4_WORD;
 
-    dma_single_data_mode_init(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, &dma_config);
+    dma_multi_data_mode_init(
+        BOARD_SDIO_DMA_PERIPH,
+        BOARD_SDIO_DMA_CHANNEL,
+        &dma_config);
+
+    dma_flow_controller_config(
+        BOARD_SDIO_DMA_PERIPH,
+        BOARD_SDIO_DMA_CHANNEL,
+        DMA_FLOW_CONTROLLER_PERI);
 
     dma_channel_subperipheral_select(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, BOARD_SDIO_DMA_SUBPERI);
 
@@ -1139,7 +1177,10 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
 {
     uint32_t response;
     uint32_t timeout;
+    uint32_t sdio_error_flags;
     board_sdio_status_t status;
+
+    s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_NONE;
 
     if (buffer == NULL)
     {
@@ -1174,8 +1215,6 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
 
     sdio_data_transfer_config(SDIO_TRANSMODE_BLOCK, SDIO_TRANSDIRECTION_TOSDIO);
 
-    sdio_interrupt_enable(SDIO_INT_DTEND | SDIO_INT_DTBLKEND);
-
     /*
      * 打开 SDIO DMA 请求
      */
@@ -1193,6 +1232,7 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
 
     if (status != BOARD_SDIO_STATUS_OK)
     {
+        s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_COMMAND;
         board_sdio_data_cleanup();
         board_sdio_dma_cleanup();
 
@@ -1204,6 +1244,7 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
      */
     if (sdio_command_index_get() != 17U)
     {
+        s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_COMMAND;
         board_sdio_data_cleanup();
         board_sdio_dma_cleanup();
 
@@ -1215,6 +1256,7 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
      */
     if ((response & BOARD_SDIO_R1_ERROR_MASK) != 0U)
     {
+        s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_COMMAND;
         board_sdio_data_cleanup();
         board_sdio_dma_cleanup();
 
@@ -1229,16 +1271,15 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
     while (RESET == dma_flag_get(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, DMA_FLAG_FTF) &&
            ((s_board_sdio_dma_irq_events & BOARD_SDIO_DMA_IRQ_EVENT_FTF) == 0U))
     {
-        /*
-         * DMA FIFO 错误
-         */
-        if (SET ==
-            dma_flag_get(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, DMA_FLAG_FEE))
+        /* DMA FIFO exception/error。 */
+        status = board_sdio_dma_fifo_check();
+        if (status != BOARD_SDIO_STATUS_OK)
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_FEE;
             board_sdio_data_cleanup();
             board_sdio_dma_cleanup();
 
-            return BOARD_SDIO_STATUS_DATA_ERROR;
+            return status;
         }
 
         /*
@@ -1247,6 +1288,7 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
         if (SET ==
             dma_flag_get(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, DMA_FLAG_SDE))
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_SDE;
             board_sdio_data_cleanup();
             board_sdio_dma_cleanup();
 
@@ -1259,6 +1301,7 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
         if (SET ==
             dma_flag_get(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, DMA_FLAG_TAE))
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_TAE;
             board_sdio_data_cleanup();
             board_sdio_dma_cleanup();
 
@@ -1268,11 +1311,10 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
         /*
          * SDIO 数据错误
          */
-        if (SET == sdio_flag_get(SDIO_FLAG_DTCRCERR)   ||
-            SET == sdio_flag_get(SDIO_FLAG_DTTMOUT)    ||
-            SET == sdio_flag_get(SDIO_FLAG_RXORE)      ||
-            SET == sdio_flag_get(SDIO_FLAG_STBITE))
+        sdio_error_flags = board_sdio_dma_polling_sdio_error_flags();
+        if (sdio_error_flags != BOARD_SDIO_DMA_POLL_ERROR_NONE)
         {
+            s_board_sdio_dma_polling_error = sdio_error_flags;
             board_sdio_data_cleanup();
             board_sdio_dma_cleanup();
 
@@ -1281,6 +1323,7 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
 
         if (timeout == 0U)
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_TIMEOUT;
             board_sdio_data_cleanup();
             board_sdio_dma_cleanup();
 
@@ -1299,11 +1342,10 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
     while (RESET ==
            sdio_flag_get(SDIO_FLAG_DTBLKEND))
     {
-        if (SET == sdio_flag_get(SDIO_FLAG_DTCRCERR) ||
-            SET == sdio_flag_get(SDIO_FLAG_DTTMOUT) ||
-            SET == sdio_flag_get(SDIO_FLAG_RXORE) ||
-            SET == sdio_flag_get(SDIO_FLAG_STBITE))
+        sdio_error_flags = board_sdio_dma_polling_sdio_error_flags();
+        if (sdio_error_flags != BOARD_SDIO_DMA_POLL_ERROR_NONE)
         {
+            s_board_sdio_dma_polling_error = sdio_error_flags;
             board_sdio_data_cleanup();
             board_sdio_dma_cleanup();
 
@@ -1312,6 +1354,7 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
 
         if (timeout == 0U)
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_TIMEOUT;
             board_sdio_data_cleanup();
             board_sdio_dma_cleanup();
 
@@ -1324,6 +1367,7 @@ board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uin
     board_sdio_data_cleanup();
     board_sdio_dma_cleanup();
 
+    s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_NONE;
     return BOARD_SDIO_STATUS_OK;
 }
 
@@ -1331,7 +1375,10 @@ board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number,con
 {
     uint32_t response;
     uint32_t timeout;
+    uint32_t sdio_error_flags;
     board_sdio_status_t status;
+
+    s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_NONE;
 
     if (buffer == NULL)
     {
@@ -1356,17 +1403,20 @@ board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number,con
 
     if (status != BOARD_SDIO_STATUS_OK)
     {
+        s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_COMMAND;
         goto dma_write_cleanup;
     }
     
     if (sdio_command_index_get() != 24U)
     {
+        s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_COMMAND;
         status = BOARD_SDIO_STATUS_COMMAND_ERROR;
         goto dma_write_cleanup;
     }
     
     if ((response & BOARD_SDIO_R1_ERROR_MASK) != 0)
     {
+        s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_COMMAND;
         status = BOARD_SDIO_STATUS_COMMAND_ERROR;
         goto dma_write_cleanup;
     }
@@ -1375,8 +1425,6 @@ board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number,con
 
     sdio_data_transfer_config(SDIO_TRANSMODE_BLOCK, SDIO_TRANSDIRECTION_TOCARD);
     
-    sdio_interrupt_enable(SDIO_INT_DTEND | SDIO_INT_DTBLKEND);
-
     sdio_dma_enable();
 
     sdio_dsm_enable();
@@ -1398,33 +1446,38 @@ board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number,con
 
         if (status != BOARD_SDIO_STATUS_OK)
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_FEE;
             goto dma_write_cleanup;
         }
         if (SET == dma_flag_get(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, DMA_FLAG_SDE))
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_SDE;
             status = BOARD_SDIO_STATUS_DATA_ERROR;
             goto dma_write_cleanup;
         }
         if (SET == dma_flag_get(BOARD_SDIO_DMA_PERIPH, BOARD_SDIO_DMA_CHANNEL, DMA_FLAG_TAE))
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_TAE;
             status = BOARD_SDIO_STATUS_DATA_ERROR;
             goto dma_write_cleanup;
         }
-        if (SET == sdio_flag_get(SDIO_FLAG_DTTMOUT))
+        sdio_error_flags = board_sdio_dma_polling_sdio_error_flags();
+        if ((sdio_error_flags & BOARD_SDIO_DMA_POLL_ERROR_DTTMOUT) != 0U)
         {
+            s_board_sdio_dma_polling_error = sdio_error_flags;
             status = BOARD_SDIO_STATUS_TIMEOUT;
             goto dma_write_cleanup;
         }
-        if ((SET == sdio_flag_get(SDIO_FLAG_DTCRCERR)) ||
-            (SET == sdio_flag_get(SDIO_FLAG_TXURE))    ||
-            (SET == sdio_flag_get(SDIO_FLAG_STBITE)))    
+        if (sdio_error_flags != BOARD_SDIO_DMA_POLL_ERROR_NONE)
         {
+            s_board_sdio_dma_polling_error = sdio_error_flags;
             status = BOARD_SDIO_STATUS_DATA_ERROR;
             goto dma_write_cleanup;
         }
 
         if (timeout == 0U)
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_TIMEOUT;
             status = BOARD_SDIO_STATUS_TIMEOUT;
             goto dma_write_cleanup;
         }
@@ -1435,22 +1488,24 @@ board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number,con
 
     while (RESET == sdio_flag_get(SDIO_FLAG_DTBLKEND))
     {
-        if (SET == sdio_flag_get(SDIO_FLAG_DTTMOUT))
+        sdio_error_flags = board_sdio_dma_polling_sdio_error_flags();
+        if ((sdio_error_flags & BOARD_SDIO_DMA_POLL_ERROR_DTTMOUT) != 0U)
         {
+            s_board_sdio_dma_polling_error = sdio_error_flags;
             status = BOARD_SDIO_STATUS_TIMEOUT;
             goto dma_write_cleanup;
         }
 
-        if ((SET == sdio_flag_get(SDIO_FLAG_DTCRCERR)) ||
-            (SET == sdio_flag_get(SDIO_FLAG_TXURE))    ||
-            (SET == sdio_flag_get(SDIO_FLAG_STBITE)))    
+        if (sdio_error_flags != BOARD_SDIO_DMA_POLL_ERROR_NONE)
         {
+            s_board_sdio_dma_polling_error = sdio_error_flags;
             status = BOARD_SDIO_STATUS_DATA_ERROR;
             goto dma_write_cleanup;
         }
 
         if (timeout == 0U)
         {
+            s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_TIMEOUT;
             status = BOARD_SDIO_STATUS_TIMEOUT;
             goto dma_write_cleanup;
         }
@@ -1458,12 +1513,18 @@ board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number,con
     }
     
     status = BOARD_SDIO_STATUS_OK;
+    s_board_sdio_dma_polling_error = BOARD_SDIO_DMA_POLL_ERROR_NONE;
 
 dma_write_cleanup:
     board_sdio_data_cleanup();
     board_sdio_dma_cleanup();
 
     return status;
+}
+
+uint32_t board_sdio_dma_polling_error_get(void)
+{
+    return s_board_sdio_dma_polling_error;
 }
 
 board_sdio_status_t board_sdio_dma_read_start(

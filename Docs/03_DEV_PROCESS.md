@@ -539,6 +539,12 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **风险点:** APP 的 TF/GD25Q40E 参数/告警访问必须只在 StorageTask 上下文,ControlTask/AlarmTask 只发请求;M6 Bootloader 访问 GD25Q40E 仅允许发生在升级状态机的独占阶段(《01》三-4 存储分域强制项)。
 
+**板测结论补充(2026-09-12,SDIO DMA 轮询接入):**
+
+- 审计日志行尾修复:`storage_task_format_audit_event()` 与 `boot #N` 行的写入长度由 `position - 1` 改为 `position`。修复前每条记录只写 `CR`、缺 `LF`(`boot_000085.log`:322 字节,8 CR / 0 LF);修复后 `boot_000087.log` 实测 11 CR / 11 LF,内容与串口一致。
+- 热拔在途写入:拔卡若发生在文件创建或记录写入过程中,可能留下 0 字节文件(`sample_20260101_053402.csv`);系统不死机、采样不停(拔卡后仍每 10s 输出采样行),重插后由挂载策略自动重试恢复。被打断写之后的首次挂载曾出现一次瞬态 `FatFsErr=1 / DMAerr=2 (FEE)`,自动重试后 `FatFs: Mounted [PASS]`。
+- 同一轮干净卡验证:`config.ini` 导入 [OK]、采样文件 `sample_20260101_053750.csv` 6 行 186 字节(6 CR / 6 LF)、告警文件 `alarm_20260101_052714.csv` 1 行 35 字节、重插后 Q-02 重挂载 [PASS];异常未再复现。
+
 ---
 
 ## 九、M6:Bootloader(全程最硬核)

@@ -4,11 +4,38 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #define DISKIO_SDIO_PDRV        0U
 
 static DSTATUS s_disk_sdio_status = STA_NOINIT;
 static uint16_t s_disk_sdio_rca = 0;
+
+/*
+ * FatFs 传入的扇区缓冲区不保证 4 字节对齐，而 SDIO DMA 使用 32 位传输。
+ * StorageTask 是当前 FatFs 唯一所有者，因此一个静态 bounce buffer 足够，
+ * 且不会引入动态内存或跨任务共享。
+ */
+#if defined(__CC_ARM)
+
+__align(4)
+static uint8_t s_disk_sdio_dma_bounce_buffer[BOARD_SDIO_BLOCK_SIZE];
+
+#elif defined(__GNUC__)
+
+static uint8_t s_disk_sdio_dma_bounce_buffer[BOARD_SDIO_BLOCK_SIZE]
+    __attribute__((aligned(4)));
+
+#else
+
+static uint8_t s_disk_sdio_dma_bounce_buffer[BOARD_SDIO_BLOCK_SIZE];
+
+#endif
+
+static uint8_t diskio_sdio_buffer_aligned(const void *buffer)
+{
+    return ((((uintptr_t)buffer) & 0x03U) == 0U) ? 1U : 0U;
+}
 
 /* 将 BSP 的 SDIO 状态转换成 FatFs 的 DRESULT */
 static DRESULT diskio_sdio_status_to_result(board_sdio_status_t status)
@@ -119,6 +146,9 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count)
     UINT index;
     DRESULT result;
     board_sdio_status_t status;
+    BYTE *target;
+    uint8_t *dma_buffer;
+    uint8_t use_bounce;
 
     if ((pdrv != DISKIO_SDIO_PDRV) || (buff == NULL) || (count == 0U))
     {
@@ -139,7 +169,14 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count)
     
     for (index = 0U; index < count; index++)
     {
-        status = board_sdio_read_block(sector + (DWORD)index, buff + ((uint32_t)index * BOARD_SDIO_BLOCK_SIZE));
+        target = buff + ((uint32_t)index * BOARD_SDIO_BLOCK_SIZE);
+        use_bounce = (diskio_sdio_buffer_aligned(target) == 0U) ? 1U : 0U;
+        dma_buffer = (use_bounce != 0U) ?
+            s_disk_sdio_dma_bounce_buffer : target;
+
+        status = board_sdio_read_block_dma_polling(
+            sector + (DWORD)index,
+            dma_buffer);
 
         if (status != BOARD_SDIO_STATUS_OK)
         {
@@ -149,6 +186,15 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count)
             }
             return diskio_sdio_status_to_result(status);
         }
+
+        if (use_bounce != 0U)
+        {
+            (void)memcpy(
+                target,
+                s_disk_sdio_dma_bounce_buffer,
+                BOARD_SDIO_BLOCK_SIZE);
+        }
+
     }
     return RES_OK;
 }
@@ -161,6 +207,9 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, DWORD sector, UINT count)
     UINT index;
     DRESULT result;
     board_sdio_status_t status;
+    const BYTE *source;
+    const uint8_t *dma_buffer;
+    uint8_t use_bounce;
 
     if ((pdrv != DISKIO_SDIO_PDRV) || (buff == NULL) || (count == 0U))
     {
@@ -181,7 +230,23 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, DWORD sector, UINT count)
     
     for (index = 0U; index < count; index++)
     {
-        status = board_sdio_write_block(sector + (DWORD)index, buff + ((uint32_t)index * BOARD_SDIO_BLOCK_SIZE));
+        source = buff + ((uint32_t)index * BOARD_SDIO_BLOCK_SIZE);
+        use_bounce = (diskio_sdio_buffer_aligned(source) == 0U) ? 1U : 0U;
+
+        if (use_bounce != 0U)
+        {
+            (void)memcpy(
+                s_disk_sdio_dma_bounce_buffer,
+                source,
+                BOARD_SDIO_BLOCK_SIZE);
+        }
+
+        dma_buffer = (use_bounce != 0U) ?
+            s_disk_sdio_dma_bounce_buffer : source;
+
+        status = board_sdio_write_block_dma_polling(
+            sector + (DWORD)index,
+            dma_buffer);
 
         if (status != BOARD_SDIO_STATUS_OK)
         {
@@ -198,6 +263,7 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, DWORD sector, UINT count)
         {
             return diskio_sdio_status_to_result(status);
         }
+
     }
     return RES_OK;
 }

@@ -19,6 +19,18 @@
 #define BOARD_SDIO_IRQ_EVENT_RXORE         (1UL << 5)
 #define BOARD_SDIO_IRQ_EVENT_STBITE        (1UL << 6)
 
+#define BOARD_SDIO_DMA_POLL_ERROR_NONE     0UL
+#define BOARD_SDIO_DMA_POLL_ERROR_COMMAND  (1UL << 0)
+#define BOARD_SDIO_DMA_POLL_ERROR_FEE      (1UL << 1)
+#define BOARD_SDIO_DMA_POLL_ERROR_SDE      (1UL << 2)
+#define BOARD_SDIO_DMA_POLL_ERROR_TAE      (1UL << 3)
+#define BOARD_SDIO_DMA_POLL_ERROR_DTCRCERR (1UL << 4)
+#define BOARD_SDIO_DMA_POLL_ERROR_DTTMOUT  (1UL << 5)
+#define BOARD_SDIO_DMA_POLL_ERROR_RXORE    (1UL << 6)
+#define BOARD_SDIO_DMA_POLL_ERROR_STBITE   (1UL << 7)
+#define BOARD_SDIO_DMA_POLL_ERROR_TIMEOUT  (1UL << 8)
+#define BOARD_SDIO_DMA_POLL_ERROR_TXURE    (1UL << 9)
+
 typedef void (*board_sdio_irq_callback_t)(uint32_t dma_events, uint32_t sdio_events);
 
 typedef struct
@@ -81,6 +93,7 @@ board_sdio_status_t board_sdio_write_block(uint32_t block_number, const uint8_t 
 board_sdio_status_t board_sdio_wait_card_ready(uint16_t rca, uint32_t *response);
 board_sdio_status_t board_sdio_read_block_dma_polling(uint32_t block_number, uint8_t *buffer);
 board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number, const uint8_t *buffer);
+uint32_t board_sdio_dma_polling_error_get(void);
 
 board_sdio_status_t board_sdio_dma_read_start(
     uint32_t block_number,

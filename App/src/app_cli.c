@@ -1349,6 +1349,7 @@ static cli_status_t app_cli_test(int argc, const char *argv[],
     uint16_t pos;
     uint8_t flash_pass = 0U;
     uint8_t tf_pass = 0U;
+    uint8_t fatfs_pass = 0U;
     uint8_t rtc_pass = 0U;
     uint8_t all_pass;
 
@@ -1382,6 +1383,29 @@ static cli_status_t app_cli_test(int argc, const char *argv[],
     (void)app_cli_print((tf_pass != 0U) ?
         "TF Card    : Found     [PASS]" : "TF Card    : Not Found [FAIL]");
 
+    fatfs_pass = storage_task_fatfs_mounted_get();
+    (void)app_cli_print((fatfs_pass != 0U) ?
+        "FatFs      : Mounted   [PASS]" : "FatFs      : Not Mounted [FAIL]");
+
+    if (fatfs_pass == 0U)
+    {
+        pos = 0U;
+        pos = app_cli_append_text(buf, pos, "FatFsErr=");
+        pos += app_cli_u32_to_dec(&buf[pos],
+                                  storage_task_fatfs_mount_result_get(),
+                                  0U);
+        buf[pos] = '\0';
+        (void)app_cli_print(buf);
+
+        pos = 0U;
+        pos = app_cli_append_text(buf, pos, "DMAerr=");
+        pos += app_cli_u32_to_dec(&buf[pos],
+                                  board_sdio_dma_polling_error_get(),
+                                  0U);
+        buf[pos] = '\0';
+        (void)app_cli_print(buf);
+    }
+
     (void)app_cli_print("OLED       : OK        [PASS]");
 
     if (board_rtc_time_get(&time) == 0)
@@ -1402,7 +1426,7 @@ static cli_status_t app_cli_test(int argc, const char *argv[],
         (void)app_cli_print(buf);
     }
 
-    all_pass = (uint8_t)(flash_pass & tf_pass & rtc_pass);
+    all_pass = (uint8_t)(flash_pass & tf_pass & fatfs_pass & rtc_pass);
 
     (void)app_cli_print((all_pass != 0U) ?
         "=== Test Result: PASS ===" : "=== Test Result: FAIL ===");

@@ -196,6 +196,7 @@ uint32_t storage_task_get_stack_high_water_mark(void);
 
 int storage_task_sdio_diag_get(storage_task_sdio_diag_t *diag);
 uint8_t storage_task_fatfs_mounted_get(void);
+uint32_t storage_task_fatfs_mount_result_get(void);
 
 int storage_task_request_submit(const storage_task_request_t *request);
 int storage_task_request_result_get(storage_task_request_result_t *result, uint32_t timeout_ms);
