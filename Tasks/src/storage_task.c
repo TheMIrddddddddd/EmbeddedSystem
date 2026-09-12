@@ -109,6 +109,7 @@ static volatile uint32_t s_storage_task_sdio_irq_count;
 static void storage_task_record_files_close(void);
 static int storage_task_record_directories_prepare(void);
 static int storage_task_audit_open(uint8_t write_boot_line);
+static void storage_task_record_setup_after_mount(uint8_t write_boot_line);
 
 static void storage_sdio_initialize(void)
 {
@@ -229,17 +230,13 @@ static void storage_card_insert_process(void)
         return;
     }
     storage_fatfs_mount();
+    storage_task_record_setup_after_mount(0U);
     if (storage_mount_policy_retry(
             (board_sdio_card_present() != 0U) ? 1U : 0U,
             s_storage_fatfs_mounted,
             s_storage_card_insert_attempted) != 0U)
     {
         s_storage_card_insert_attempted = 0U;
-    }
-    if (s_storage_fatfs_mounted != 0U)
-    {
-        (void)storage_task_record_directories_prepare();
-        (void)storage_task_audit_open(0U);
     }
 }
 
@@ -645,6 +642,26 @@ static int storage_task_record_directories_prepare(void)
             ((audit == FR_OK) || (audit == FR_EXIST))) ? 1 : 0;
 }
 
+/* 挂载后初始化业务目录和 audit 文件；失败则主动卸载，交给插卡状态机重试。 */
+static void storage_task_record_setup_after_mount(uint8_t write_boot_line)
+{
+    if (s_storage_fatfs_mounted == 0U)
+    {
+        return;
+    }
+
+    if ((storage_task_record_directories_prepare() == 0) ||
+        ((s_storage_audit_boot_count != 0U) &&
+         (storage_task_audit_open(write_boot_line) == 0)))
+    {
+        storage_task_record_files_close();
+        s_storage_fatfs_mounted = 0U;
+        s_storage_fatfs_mount_result = FR_DISK_ERR;
+        diskio_sdio_set_not_ready();
+        s_storage_fatfs_unmount_result = f_mount(NULL, "0:", 0U);
+    }
+}
+
 /* 格式化审计事件，所有值先写入静态记录缓冲区后再交给 FatFs。 */
 static int storage_task_format_audit_event(
     const storage_task_record_request_t *request,
@@ -1047,6 +1064,7 @@ static void storage_task(void *argument)
     storage_task_publish_config_load();
     storage_sdio_initialize();
     storage_fatfs_mount();
+    storage_task_record_setup_after_mount(1U);
     s_storage_card_insert_attempted =
         (board_sdio_card_present() != 0U) ? 1U : 0U;
     if (storage_mount_policy_retry(
@@ -1055,11 +1073,6 @@ static void storage_task(void *argument)
             s_storage_card_insert_attempted) != 0U)
     {
         s_storage_card_insert_attempted = 0U;
-    }
-    if (s_storage_fatfs_mounted != 0U)
-    {
-        (void)storage_task_record_directories_prepare();
-        (void)storage_task_audit_open(1U);
     }
 
     for (;;)
