@@ -33,8 +33,33 @@
 #define STORAGE_TASK_RESULT_QUEUE_LENGTH    4U
 
 #define STORAGE_CARD_INSERT_DEBOUNCE_MS     100U
+#define STORAGE_FATFS_MOUNT_RETRY_COUNT     2U
+#define STORAGE_TASK_ALARM_RPC_QUEUE_LENGTH 4U
+#define STORAGE_TASK_ALARM_RPC_TIMEOUT_MS   400U
 #define STORAGE_RECORD_PATH_MAX             48U
 #define STORAGE_RECORD_MAX_ROWS             10U
+
+typedef enum
+{
+    STORAGE_TASK_ALARM_RPC_QUERY = 0,
+    STORAGE_TASK_ALARM_RPC_CLEAR
+} storage_task_alarm_rpc_operation_t;
+
+typedef struct
+{
+    uint32_t request_id;
+    uint8_t operation;
+    uint8_t reserved[3];
+} storage_task_alarm_rpc_request_t;
+
+typedef struct
+{
+    uint32_t request_id;
+    uint16_t payload_length;
+    uint8_t operation;
+    uint8_t status;
+    uint8_t payload[STORAGE_TASK_ALARM_QUERY_PAYLOAD_MAX];
+} storage_task_alarm_rpc_result_t;
 
 static StaticTask_t s_storage_task_tcb;
 static StackType_t  s_storage_task_stack[STORAGE_TASK_STACK_DEPTH];
@@ -48,6 +73,8 @@ static StaticQueue_t s_storage_result_queue;
 static StaticQueue_t s_storage_file_request_queue;
 static StaticQueue_t s_storage_file_result_queue;
 static StaticQueue_t s_storage_record_queue;
+static StaticQueue_t s_storage_alarm_rpc_request_queue;
+static StaticQueue_t s_storage_alarm_rpc_result_queue;
 
 __align(8)
 static uint8_t s_storage_request_queue_storage[STORAGE_TASK_REQUEST_QUEUE_LENGTH * sizeof(storage_task_request_t)];
@@ -64,13 +91,26 @@ static uint8_t s_storage_file_result_queue_storage[STORAGE_TASK_RESULT_QUEUE_LEN
 __align(8)
 static uint8_t s_storage_record_queue_storage[STORAGE_TASK_RECORD_QUEUE_LENGTH * sizeof(storage_task_record_request_t)];
 
+__align(8)
+static uint8_t s_storage_alarm_rpc_request_queue_storage[
+    STORAGE_TASK_ALARM_RPC_QUEUE_LENGTH *
+    sizeof(storage_task_alarm_rpc_request_t)];
+
+__align(8)
+static uint8_t s_storage_alarm_rpc_result_queue_storage[
+    STORAGE_TASK_ALARM_RPC_QUEUE_LENGTH *
+    sizeof(storage_task_alarm_rpc_result_t)];
+
 static QueueHandle_t s_storage_request_queue_handle;
 static QueueHandle_t s_storage_result_queue_handle;
 static QueueHandle_t s_storage_file_request_queue_handle;
 static QueueHandle_t s_storage_file_result_queue_handle;
 static QueueHandle_t s_storage_record_queue_handle;
+static QueueHandle_t s_storage_alarm_rpc_request_queue_handle;
+static QueueHandle_t s_storage_alarm_rpc_result_queue_handle;
 static storage_task_persist_request_t s_storage_persist_request;
 static storage_task_persist_result_t s_storage_persist_result;
+static uint32_t s_storage_alarm_rpc_next_request_id;
 static uint8_t s_storage_config_file[APP_CONFIG_INI_FILE_MAX + 1U];
 static uint8_t s_storage_config_encoded[APP_CONFIG_SERIALIZED_SIZE];
 
@@ -90,6 +130,9 @@ static uint8_t s_storage_audit_boot_written;
 static char s_storage_record_line[STORAGE_RECORD_TEXT_MAX];
 static uint8_t s_storage_record_scan_buffer[128U];
 static storage_task_record_request_t s_storage_record_request;
+static storage_task_alarm_rpc_request_t s_storage_alarm_rpc_request;
+static storage_task_alarm_rpc_result_t s_storage_alarm_rpc_result;
+static storage_task_alarm_rpc_result_t s_storage_alarm_rpc_wait_result;
 static FATFS s_storage_fatfs;
 static volatile FRESULT s_storage_fatfs_mount_result = FR_NOT_READY;
 static volatile uint8_t s_storage_fatfs_mounted;
@@ -112,6 +155,7 @@ static int storage_task_record_directories_prepare(void);
 static int storage_task_audit_open(uint8_t write_boot_line);
 static void storage_task_record_setup_after_mount(uint8_t write_boot_line);
 static int storage_task_audit_write_boot_line(void);
+static void storage_task_process_alarm_rpc_request(void);
 
 static void storage_sdio_initialize(void)
 {
@@ -143,6 +187,8 @@ static void storage_sdio_initialize(void)
 
 static void storage_fatfs_mount(void)
 {
+    uint8_t attempt;
+
     s_storage_fatfs_mounted = 0U;
     s_storage_fatfs_mount_result = FR_NOT_READY;
 
@@ -151,13 +197,35 @@ static void storage_fatfs_mount(void)
         return;
     }
 
-    s_storage_fatfs_mount_result = f_mount(&s_storage_fatfs, "0:", 1U);
-
-    if (s_storage_fatfs_mount_result == FR_OK)
+    for (attempt = 0U; attempt < STORAGE_FATFS_MOUNT_RETRY_COUNT; attempt++)
     {
-        s_storage_fatfs_mounted = 1U;
-    }
+        s_storage_fatfs_mount_result = f_mount(&s_storage_fatfs, "0:", 1U);
 
+        if (s_storage_fatfs_mount_result == FR_OK)
+        {
+            s_storage_fatfs_mounted = 1U;
+            break;
+        }
+
+        /*
+         * SDIO 初始化后的首次 DMA 读偶发 FEE：重新识别卡并立即重挂一次，
+         * 不把瞬态错误暴露给系统自检或 Q-02。
+         */
+        if ((s_storage_fatfs_mount_result != FR_DISK_ERR) ||
+            ((attempt + 1U) >= STORAGE_FATFS_MOUNT_RETRY_COUNT))
+        {
+            break;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(STORAGE_CARD_INSERT_DEBOUNCE_MS));
+
+        storage_sdio_initialize();
+
+        if (s_storage_task_sdio_diag.state != STORAGE_TASK_SDIO_STATE_READY)
+        {
+            break;
+        }
+    }
 }
 
 static void storage_card_remove_process(void)
@@ -226,9 +294,10 @@ static void storage_card_insert_process(void)
     /* 重新识别卡，并更新 diskio 的 RCA 和就绪状态。 */
     storage_sdio_initialize();
 
-    /* 初始化失败时，保留 BSP 状态，等待下一次拔插。 */
+    /* 初始化失败时保留 BSP 状态，并允许去抖后再次尝试。 */
     if (s_storage_task_sdio_diag.state != STORAGE_TASK_SDIO_STATE_READY)
     {
+        s_storage_card_insert_attempted = 0U;
         return;
     }
     storage_fatfs_mount();
@@ -815,13 +884,31 @@ static void storage_task_write_sample_record(const storage_task_record_request_t
                                         s_storage_record_line, length, 1U) == 0)) return;
 }
 
-/* 写入一条告警记录；每条记录均同步到 TF 卡。 */
+/* 写入一条告警记录；Flash 记录独立于 TF 卡，CSV 作为可选副本。 */
 static void storage_task_write_alarm_record(const storage_task_record_request_t *request)
 {
     board_rtc_time_t time;
+    uint32_t timestamp;
+    uint8_t rtc_ok;
     uint16_t length = 0U;
-    if ((request == 0) || (s_storage_fatfs_mounted == 0U) ||
-        (board_rtc_time_get(&time) == 0)) return;
+
+    if (request == 0) return;
+
+    rtc_ok = (uint8_t)((board_rtc_time_get(&time) != 0) ? 1U : 0U);
+    timestamp = request->argument;
+    if (timestamp == 0U)
+    {
+        timestamp = (rtc_ok != 0U) ? storage_record_time_to_unix(&time) :
+                    (uint32_t)(xTaskGetTickCount() /
+                               (TickType_t)configTICK_RATE_HZ);
+    }
+
+    /* Flash 是告警记录的主存储，TF 卡不可用时也必须尝试写入。 */
+    (void)storage_persistence_alarm_record_append(
+        timestamp, request->channel, request->threshold, request->actual);
+
+    if ((s_storage_fatfs_mounted == 0U) || (rtc_ok == 0U)) return;
+
     if (s_storage_alarm_file.row_count >= STORAGE_RECORD_MAX_ROWS)
         storage_task_record_file_close(&s_storage_alarm_file);
     if ((s_storage_alarm_file.open == 0U) &&
@@ -865,6 +952,143 @@ static void storage_task_process_record_request(void)
         break;
     default:
         break;
+    }
+}
+
+static uint8_t storage_task_alarm_status_to_result(
+    storage_persistence_status_t status)
+{
+    switch (status)
+    {
+    case STORAGE_PERSISTENCE_STATUS_OK:
+        return STORAGE_TASK_PERSIST_STATUS_OK;
+    case STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT:
+        return STORAGE_TASK_PERSIST_STATUS_INVALID_ARGUMENT;
+    case STORAGE_PERSISTENCE_STATUS_NOT_FOUND:
+        return STORAGE_TASK_PERSIST_STATUS_NOT_FOUND;
+    case STORAGE_PERSISTENCE_STATUS_NOT_READY:
+        return STORAGE_TASK_PERSIST_STATUS_NOT_READY;
+    case STORAGE_PERSISTENCE_STATUS_FLASH_ERROR:
+        return STORAGE_TASK_PERSIST_STATUS_FLASH_ERROR;
+    case STORAGE_PERSISTENCE_STATUS_DATA_ERROR:
+    case STORAGE_PERSISTENCE_STATUS_OUTPUT_TOO_SMALL:
+    default:
+        return STORAGE_TASK_PERSIST_STATUS_DATA_ERROR;
+    }
+}
+
+/* Alarm 查询/清除也在 StorageTask 中执行；调用者只拿按值返回的结果。 */
+static void storage_task_process_alarm_rpc_request(void)
+{
+    storage_persistence_status_t status;
+
+    if ((s_storage_alarm_rpc_request_queue_handle == NULL) ||
+        (s_storage_alarm_rpc_result_queue_handle == NULL) ||
+        (xQueueReceive(s_storage_alarm_rpc_request_queue_handle,
+                       &s_storage_alarm_rpc_request, 0U) != pdPASS))
+    {
+        return;
+    }
+
+    (void)memset(&s_storage_alarm_rpc_result, 0,
+                 sizeof(s_storage_alarm_rpc_result));
+    s_storage_alarm_rpc_result.request_id =
+        s_storage_alarm_rpc_request.request_id;
+    s_storage_alarm_rpc_result.operation =
+        s_storage_alarm_rpc_request.operation;
+
+    switch ((storage_task_alarm_rpc_operation_t)
+            s_storage_alarm_rpc_request.operation)
+    {
+    case STORAGE_TASK_ALARM_RPC_QUERY:
+        status = storage_persistence_alarm_records_read(
+            s_storage_alarm_rpc_result.payload,
+            sizeof(s_storage_alarm_rpc_result.payload),
+            &s_storage_alarm_rpc_result.payload_length);
+        break;
+    case STORAGE_TASK_ALARM_RPC_CLEAR:
+        status = storage_persistence_alarm_records_clear();
+        break;
+    default:
+        status = STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT;
+        break;
+    }
+
+    s_storage_alarm_rpc_result.status =
+        storage_task_alarm_status_to_result(status);
+    (void)xQueueSend(s_storage_alarm_rpc_result_queue_handle,
+                     &s_storage_alarm_rpc_result, 0U);
+}
+
+static int storage_task_alarm_rpc_call(uint8_t operation,
+                                       uint8_t *payload,
+                                       uint16_t capacity,
+                                       uint16_t *length)
+{
+    storage_task_alarm_rpc_request_t request;
+    TickType_t deadline;
+    TickType_t now;
+    TickType_t remaining;
+
+    if ((s_storage_alarm_rpc_request_queue_handle == NULL) ||
+        (s_storage_alarm_rpc_result_queue_handle == NULL) ||
+        (length == NULL) ||
+        ((payload == NULL) && (capacity != 0U)))
+    {
+        return 0;
+    }
+
+    (void)memset(&request, 0, sizeof(request));
+    request.request_id = ++s_storage_alarm_rpc_next_request_id;
+    request.operation = operation;
+
+    if (xQueueSend(s_storage_alarm_rpc_request_queue_handle,
+                   &request, 0U) != pdPASS)
+    {
+        return 0;
+    }
+
+    deadline = xTaskGetTickCount() +
+               pdMS_TO_TICKS(STORAGE_TASK_ALARM_RPC_TIMEOUT_MS);
+
+    for (;;)
+    {
+        now = xTaskGetTickCount();
+        if ((int32_t)(deadline - now) <= 0)
+        {
+            return 0;
+        }
+
+        remaining = deadline - now;
+        if (xQueueReceive(s_storage_alarm_rpc_result_queue_handle,
+                          &s_storage_alarm_rpc_wait_result,
+                          remaining) != pdPASS)
+        {
+            return 0;
+        }
+
+        if ((s_storage_alarm_rpc_wait_result.request_id !=
+             request.request_id) ||
+            (s_storage_alarm_rpc_wait_result.operation != operation))
+        {
+            continue;
+        }
+
+        if ((s_storage_alarm_rpc_wait_result.status !=
+             STORAGE_TASK_PERSIST_STATUS_OK) ||
+            (s_storage_alarm_rpc_wait_result.payload_length > capacity))
+        {
+            return 0;
+        }
+
+        if (s_storage_alarm_rpc_wait_result.payload_length > 0U)
+        {
+            (void)memcpy(payload,
+                         s_storage_alarm_rpc_wait_result.payload,
+                         s_storage_alarm_rpc_wait_result.payload_length);
+        }
+        *length = s_storage_alarm_rpc_wait_result.payload_length;
+        return 1;
     }
 }
 
@@ -1139,6 +1363,7 @@ static void storage_task(void *argument)
         storage_task_process_file_request();
         storage_task_process_persist_request();
         storage_task_process_record_request();
+        storage_task_process_alarm_rpc_request();
 
         s_storage_task_sdio_diag.dma_irq_events =
             s_storage_task_dma_irq_events;
@@ -1215,6 +1440,28 @@ int storage_task_create(void)
         &s_storage_record_queue);
 
     if (s_storage_record_queue_handle == NULL)
+    {
+        return 0;
+    }
+
+    s_storage_alarm_rpc_request_queue_handle = xQueueCreateStatic(
+        STORAGE_TASK_ALARM_RPC_QUEUE_LENGTH,
+        sizeof(storage_task_alarm_rpc_request_t),
+        s_storage_alarm_rpc_request_queue_storage,
+        &s_storage_alarm_rpc_request_queue);
+
+    if (s_storage_alarm_rpc_request_queue_handle == NULL)
+    {
+        return 0;
+    }
+
+    s_storage_alarm_rpc_result_queue_handle = xQueueCreateStatic(
+        STORAGE_TASK_ALARM_RPC_QUEUE_LENGTH,
+        sizeof(storage_task_alarm_rpc_result_t),
+        s_storage_alarm_rpc_result_queue_storage,
+        &s_storage_alarm_rpc_result_queue);
+
+    if (s_storage_alarm_rpc_result_queue_handle == NULL)
     {
         return 0;
     }
@@ -1314,8 +1561,9 @@ int storage_task_sample_record_submit(float ch0, float ch1)
     return (xQueueSend(s_storage_record_queue_handle, &request, 0U) == pdPASS) ? 1 : 0;
 }
 
-/* 提交一条告警值拷贝；AlarmTask 只负责产生事件，文件操作留在 StorageTask。 */
-int storage_task_alarm_record_submit(uint8_t channel, float threshold, float actual)
+/* 提交一条告警值拷贝；AlarmTask 只负责产生事件，存储操作留在 StorageTask。 */
+int storage_task_alarm_record_submit(uint8_t channel, float threshold,
+                                     float actual, uint32_t timestamp)
 {
     storage_task_record_request_t request;
     if ((s_storage_record_queue_handle == 0) || (channel >= 2U)) return 0;
@@ -1324,7 +1572,23 @@ int storage_task_alarm_record_submit(uint8_t channel, float threshold, float act
     request.channel = channel;
     request.threshold = threshold;
     request.actual = actual;
+    request.argument = timestamp;
     return (xQueueSend(s_storage_record_queue_handle, &request, 0U) == pdPASS) ? 1 : 0;
+}
+
+int storage_task_alarm_records_get(uint8_t *payload, uint16_t capacity,
+                                   uint16_t *length)
+{
+    return storage_task_alarm_rpc_call(STORAGE_TASK_ALARM_RPC_QUERY,
+                                       payload, capacity, length);
+}
+
+int storage_task_alarm_records_clear(void)
+{
+    uint16_t length = 0U;
+
+    return storage_task_alarm_rpc_call(STORAGE_TASK_ALARM_RPC_CLEAR,
+                                       NULL, 0U, &length);
 }
 
 /* 提交关键审计事件，参数按值复制进静态队列，避免跨任务裸指针。 */

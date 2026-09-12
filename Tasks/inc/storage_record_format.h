@@ -6,6 +6,8 @@
 
 #define STORAGE_RECORD_TEXT_MAX 96U
 
+uint32_t storage_record_time_to_unix(const board_rtc_time_t *time);
+
 int storage_record_format_time(const board_rtc_time_t *time,
                                char *buffer, uint16_t capacity,
                                uint16_t *length);

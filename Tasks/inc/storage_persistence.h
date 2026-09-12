@@ -11,6 +11,9 @@
 #define STORAGE_PERSISTENCE_SECTOR_B_ADDRESS     0x00001000UL
 #define STORAGE_PERSISTENCE_CONFIG_KEY           "config"
 #define STORAGE_PERSISTENCE_BOOT_COUNT_KEY       "boot_count"
+#define STORAGE_PERSISTENCE_ALARM_SLOT_KEY_PREFIX "alarm_"
+#define STORAGE_PERSISTENCE_ALARM_NEXT_KEY       "alarm_next"
+#define STORAGE_PERSISTENCE_ALARM_COUNT_KEY      "alarm_count"
 #define STORAGE_PERSISTENCE_VALUE_MAX            64U
 
 typedef enum
@@ -39,6 +42,14 @@ storage_persistence_status_t storage_persistence_boot_count_next(
     uint32_t *count);
 
 storage_persistence_status_t storage_persistence_flash_diag(uint8_t id[3]);
+
+storage_persistence_status_t storage_persistence_alarm_record_append(
+    uint32_t timestamp, uint8_t channel, float threshold, float actual);
+
+storage_persistence_status_t storage_persistence_alarm_records_read(
+    uint8_t *payload, uint16_t capacity, uint16_t *length);
+
+storage_persistence_status_t storage_persistence_alarm_records_clear(void);
 
 int storage_persistence_request_handle(
     const storage_task_persist_request_t *request,

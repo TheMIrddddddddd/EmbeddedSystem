@@ -164,6 +164,18 @@ uint8_t app_protocol_auto_report_enabled(void)
     return s_auto_report_enabled;
 }
 
+uint8_t app_protocol_alarm_report_enabled(void)
+{
+    app_config_t config;
+
+    if (app_config_get(&config) == 0)
+    {
+        return 0U;
+    }
+
+    return (config.alarm_mode == APP_PROTOCOL_ALARM_MODE_ACTIVE) ? 1U : 0U;
+}
+
 uint8_t app_protocol_reboot_pending(void)
 {
     return s_reboot_pending;
@@ -465,8 +477,50 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
         }
         break;
 
-    /* 0x0381/0x0382 事件帧由 ProtocolTask 主动发送；0x03AA 归 M7；
-     * 0x05xx 归 M6；0x06xx/0x0702 归 M5——落到 default 按非法命令字处理 */
+    case APP_PROTOCOL_CMD_SET_ALARM_MODE:
+        if (payload_length != 1U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+
+        if (app_config_alarm_mode_set(payload[0]) == 0)
+        {
+            result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
+        }
+        break;
+
+    case APP_PROTOCOL_CMD_QUERY_ALARM_RECORDS:
+        if (payload_length != 0U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+
+        if (storage_task_alarm_records_get(result->payload,
+                                           sizeof(result->payload),
+                                           &result->payload_length) == 0)
+        {
+            result->status = APP_PROTOCOL_ERROR_BUSY;
+            result->payload_length = 0U;
+        }
+        break;
+
+    case APP_PROTOCOL_CMD_CLEAR_ALARM_RECORDS:
+        if (payload_length != 0U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+
+        if (storage_task_alarm_records_clear() == 0)
+        {
+            result->status = APP_PROTOCOL_ERROR_BUSY;
+        }
+        break;
+
+    /* 0x0381/0x0382/0x0681 事件帧由 ProtocolTask 主动发送；0x03AA 归 M7；
+     * 0x05xx 归 M6；0x0702 归 M5——落到 default 按非法命令字处理 */
     default:
         result->status = APP_PROTOCOL_ERROR_ILLEGAL_COMMAND;
         result->payload_length = 0U;

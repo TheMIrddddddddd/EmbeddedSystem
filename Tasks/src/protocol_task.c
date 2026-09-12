@@ -15,6 +15,7 @@
 #include "modbus_rtu.h"
 #include "protocol_stream.h"
 #include "sample_task.h"
+#include "alarm_task.h"
 #include "task_queues.h"
 #include "task_events.h"
 
@@ -25,7 +26,7 @@
 #define PROTOCOL_COMPLETION_TIMEOUT_MS  500U
 
 /* 应答帧数据区 = 状态字节 + 结果数据 */
-#define PROTOCOL_TX_PAYLOAD_MAX         13U
+#define PROTOCOL_TX_PAYLOAD_MAX         (PROTOCOL_RESULT_DATA_MAX + 1U)
 
 #define PROTOCOL_CACHE_SIZE             128U
 
@@ -559,6 +560,40 @@ static void protocol_send_report_data(void)
     protocol_send_event(PROTOCOL_EVENT_CMD_REPORT_DATA, payload, 12U);
 }
 
+/* 0x0681：告警进入 ACTIVE 时的主动事件，字段布局与 0x0602 查询一致。 */
+static void protocol_send_alarm_event(const alarm_task_event_t *event)
+{
+    uint8_t payload[13];
+
+    if ((event == NULL) || (event->channel >= 2U))
+    {
+        return;
+    }
+
+    app_protocol_store_u32_be(&payload[0], event->timestamp);
+    payload[4] = event->channel;
+    app_protocol_store_float_be(&payload[5], event->threshold);
+    app_protocol_store_float_be(&payload[9], event->actual);
+
+    protocol_send_event(APP_PROTOCOL_CMD_ALARM_EVENT, payload,
+                        (uint16_t)sizeof(payload));
+}
+
+/* 消费 AlarmTask 的事件；只有自定义协议 + 主动告警模式才占用 RS485。 */
+static void protocol_process_alarm_events(void)
+{
+    alarm_task_event_t event;
+
+    while (alarm_task_event_receive(&event, 0U) != 0)
+    {
+        if ((s_protocol_active_kind == PROTOCOL_KIND_CUSTOM) &&
+            (app_protocol_alarm_report_enabled() != 0U))
+        {
+            protocol_send_alarm_event(&event);
+        }
+    }
+}
+
 /* 0x8888：载荷 2B 设备 ID（A-04"ID 一致"的判定来源；文档未定义载荷，此为补白） */
 static void protocol_send_heartbeat(void)
 {
@@ -792,6 +827,8 @@ static void protocol_task(void *argument)
                 }
             }
         }
+
+        protocol_process_alarm_events();
 
         /* 自动上报和心跳只在自定义协议模式运行。 */
         if ((s_protocol_active_kind == PROTOCOL_KIND_CUSTOM) &&

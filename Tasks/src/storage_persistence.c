@@ -13,6 +13,7 @@
 #define STORAGE_PERSISTENCE_RECORD_HEADER   FLASH_KV_RECORD_HEADER_SIZE
 #define STORAGE_PERSISTENCE_RECORD_COMMIT   FLASH_KV_RECORD_COMMIT_OFFSET
 #define STORAGE_PERSISTENCE_RECORD_MARKER   FLASH_KV_RECORD_COMMIT_MARKER
+#define STORAGE_PERSISTENCE_ALARM_KEY_MAX   8U
 
 static uint8_t s_sector_a[STORAGE_PERSISTENCE_SECTOR_SIZE];
 static uint8_t s_sector_b[STORAGE_PERSISTENCE_SECTOR_SIZE];
@@ -62,6 +63,100 @@ static uint32_t storage_persistence_u32_load_le(const uint8_t *buffer)
            ((uint32_t)buffer[1] << 8U) |
            ((uint32_t)buffer[2] << 16U) |
            ((uint32_t)buffer[3] << 24U);
+}
+
+static void storage_persistence_u32_store_be(uint8_t *buffer,
+                                             uint32_t value)
+{
+    buffer[0] = (uint8_t)(value >> 24U);
+    buffer[1] = (uint8_t)(value >> 16U);
+    buffer[2] = (uint8_t)(value >> 8U);
+    buffer[3] = (uint8_t)value;
+}
+
+static void storage_persistence_float_store_be(uint8_t *buffer, float value)
+{
+    uint8_t little[sizeof(float)];
+
+    (void)memcpy(little, &value, sizeof(little));
+    buffer[0] = little[3];
+    buffer[1] = little[2];
+    buffer[2] = little[1];
+    buffer[3] = little[0];
+}
+
+static int storage_persistence_alarm_key(uint8_t slot, char key[
+                                         STORAGE_PERSISTENCE_ALARM_KEY_MAX])
+{
+    if ((key == NULL) || (slot >= STORAGE_TASK_ALARM_RECORD_MAX))
+    {
+        return 0;
+    }
+
+    (void)memcpy(key, STORAGE_PERSISTENCE_ALARM_SLOT_KEY_PREFIX, 6U);
+    key[6] = (char)('0' + slot);
+    key[7] = '\0';
+
+    return 1;
+}
+
+static storage_persistence_status_t storage_persistence_alarm_meta_read(
+    uint8_t *next_slot, uint8_t *count)
+{
+    uint8_t value;
+    size_t value_length;
+    flash_kv_status_t kv_status;
+
+    if ((next_slot == NULL) || (count == NULL))
+    {
+        return STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT;
+    }
+
+    value = 0U;
+    value_length = 0U;
+    kv_status = flash_kv_get(&s_flash_kv,
+                             STORAGE_PERSISTENCE_ALARM_NEXT_KEY,
+                             &value,
+                             sizeof(value),
+                             &value_length);
+    if (kv_status == FLASH_KV_STATUS_NOT_FOUND)
+    {
+        *next_slot = 0U;
+    }
+    else if ((kv_status != FLASH_KV_STATUS_OK) ||
+             (value_length != sizeof(value)) ||
+             (value >= STORAGE_TASK_ALARM_RECORD_MAX))
+    {
+        return STORAGE_PERSISTENCE_STATUS_DATA_ERROR;
+    }
+    else
+    {
+        *next_slot = value;
+    }
+
+    value = 0U;
+    value_length = 0U;
+    kv_status = flash_kv_get(&s_flash_kv,
+                             STORAGE_PERSISTENCE_ALARM_COUNT_KEY,
+                             &value,
+                             sizeof(value),
+                             &value_length);
+    if (kv_status == FLASH_KV_STATUS_NOT_FOUND)
+    {
+        *count = 0U;
+    }
+    else if ((kv_status != FLASH_KV_STATUS_OK) ||
+             (value_length != sizeof(value)) ||
+             (value > STORAGE_TASK_ALARM_RECORD_MAX))
+    {
+        return STORAGE_PERSISTENCE_STATUS_DATA_ERROR;
+    }
+    else
+    {
+        *count = value;
+    }
+
+    return STORAGE_PERSISTENCE_STATUS_OK;
 }
 
 static uint32_t storage_persistence_sector_address(uint8_t sector)
@@ -802,6 +897,223 @@ storage_persistence_status_t storage_persistence_flash_diag(uint8_t id[3])
 
     if (board_spi_flash_read_jedec_id(id) == 0)
     {
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    return STORAGE_PERSISTENCE_STATUS_OK;
+}
+
+/* 将一条告警编码为协议约定的 13B：时间戳 BE、通道、阈值 BE、实际值 BE。 */
+static void storage_persistence_alarm_encode(uint8_t value[
+                                             STORAGE_TASK_ALARM_RECORD_SIZE],
+                                             uint32_t timestamp,
+                                             uint8_t channel,
+                                             float threshold,
+                                             float actual)
+{
+    storage_persistence_u32_store_be(&value[0], timestamp);
+    value[4] = channel;
+    storage_persistence_float_store_be(&value[5], threshold);
+    storage_persistence_float_store_be(&value[9], actual);
+}
+
+storage_persistence_status_t storage_persistence_alarm_record_append(
+    uint32_t timestamp, uint8_t channel, float threshold, float actual)
+{
+    uint8_t next_slot;
+    uint8_t count;
+    uint8_t next_after_write;
+    uint8_t count_after_write;
+    uint8_t value[STORAGE_TASK_ALARM_RECORD_SIZE];
+    char key[STORAGE_PERSISTENCE_ALARM_KEY_MAX];
+    flash_kv_status_t kv_status;
+
+    if (channel >= APP_CONFIG_CHANNEL_COUNT)
+    {
+        return STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (s_storage_persistence_initialized == 0U)
+    {
+        return STORAGE_PERSISTENCE_STATUS_NOT_READY;
+    }
+
+    if (storage_persistence_alarm_meta_read(&next_slot, &count) !=
+        STORAGE_PERSISTENCE_STATUS_OK)
+    {
+        return STORAGE_PERSISTENCE_STATUS_DATA_ERROR;
+    }
+
+    if (storage_persistence_alarm_key(next_slot, key) == 0)
+    {
+        return STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT;
+    }
+
+    storage_persistence_alarm_encode(value, timestamp, channel,
+                                     threshold, actual);
+
+    kv_status = flash_kv_set(&s_flash_kv, key, value, sizeof(value));
+    if (kv_status != FLASH_KV_STATUS_OK)
+    {
+        (void)storage_persistence_reload();
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    next_after_write = (uint8_t)((next_slot + 1U) %
+                                 STORAGE_TASK_ALARM_RECORD_MAX);
+    count_after_write = (count < STORAGE_TASK_ALARM_RECORD_MAX) ?
+                        (uint8_t)(count + 1U) :
+                        STORAGE_TASK_ALARM_RECORD_MAX;
+
+    kv_status = flash_kv_set(&s_flash_kv,
+                             STORAGE_PERSISTENCE_ALARM_NEXT_KEY,
+                             &next_after_write,
+                             sizeof(next_after_write));
+    if (kv_status != FLASH_KV_STATUS_OK)
+    {
+        (void)storage_persistence_reload();
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    kv_status = flash_kv_set(&s_flash_kv,
+                             STORAGE_PERSISTENCE_ALARM_COUNT_KEY,
+                             &count_after_write,
+                             sizeof(count_after_write));
+    if (kv_status != FLASH_KV_STATUS_OK)
+    {
+        (void)storage_persistence_reload();
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    /* 三个 key 一起复制到新扇区并最后提交，掉电只能看到旧组或新组。 */
+    if (storage_persistence_commit_current_context(key, value,
+                                                   sizeof(value)) == 0)
+    {
+        (void)storage_persistence_reload();
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    return STORAGE_PERSISTENCE_STATUS_OK;
+}
+
+storage_persistence_status_t storage_persistence_alarm_records_read(
+    uint8_t *payload, uint16_t capacity, uint16_t *length)
+{
+    uint8_t next_slot;
+    uint8_t count;
+    uint8_t index;
+    uint8_t slot;
+    uint8_t value[STORAGE_TASK_ALARM_RECORD_SIZE];
+    char key[STORAGE_PERSISTENCE_ALARM_KEY_MAX];
+    size_t value_length;
+    size_t required_length;
+    flash_kv_status_t kv_status;
+
+    if ((payload == NULL) || (length == NULL))
+    {
+        return STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT;
+    }
+
+    *length = 0U;
+
+    if (s_storage_persistence_initialized == 0U)
+    {
+        return STORAGE_PERSISTENCE_STATUS_NOT_READY;
+    }
+
+    if (storage_persistence_alarm_meta_read(&next_slot, &count) !=
+        STORAGE_PERSISTENCE_STATUS_OK)
+    {
+        return STORAGE_PERSISTENCE_STATUS_DATA_ERROR;
+    }
+
+    required_length = 1U +
+                      ((size_t)count * STORAGE_TASK_ALARM_RECORD_SIZE);
+    if ((size_t)capacity < required_length)
+    {
+        return STORAGE_PERSISTENCE_STATUS_OUTPUT_TOO_SMALL;
+    }
+
+    payload[0] = count;
+
+    for (index = 0U; index < count; index++)
+    {
+        slot = (uint8_t)((next_slot + STORAGE_TASK_ALARM_RECORD_MAX -
+                          1U - index) % STORAGE_TASK_ALARM_RECORD_MAX);
+        if (storage_persistence_alarm_key(slot, key) == 0)
+        {
+            return STORAGE_PERSISTENCE_STATUS_DATA_ERROR;
+        }
+
+        value_length = 0U;
+        kv_status = flash_kv_get(&s_flash_kv, key, value, sizeof(value),
+                                 &value_length);
+        if ((kv_status != FLASH_KV_STATUS_OK) ||
+            (value_length != sizeof(value)))
+        {
+            return STORAGE_PERSISTENCE_STATUS_DATA_ERROR;
+        }
+
+        (void)memcpy(&payload[1U +
+                             ((size_t)index * STORAGE_TASK_ALARM_RECORD_SIZE)],
+                     value,
+                     sizeof(value));
+    }
+
+    *length = (uint16_t)required_length;
+    return STORAGE_PERSISTENCE_STATUS_OK;
+}
+
+storage_persistence_status_t storage_persistence_alarm_records_clear(void)
+{
+    uint8_t zero = 0U;
+    uint8_t slot;
+    char key[STORAGE_PERSISTENCE_ALARM_KEY_MAX];
+    flash_kv_status_t kv_status;
+
+    if (s_storage_persistence_initialized == 0U)
+    {
+        return STORAGE_PERSISTENCE_STATUS_NOT_READY;
+    }
+
+    /* 用空 value 覆盖 10 个槽，清除后的新扇区不再包含旧告警数据。 */
+    for (slot = 0U; slot < STORAGE_TASK_ALARM_RECORD_MAX; slot++)
+    {
+        if (storage_persistence_alarm_key(slot, key) == 0)
+        {
+            return STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT;
+        }
+
+        kv_status = flash_kv_set(&s_flash_kv, key, NULL, 0U);
+        if (kv_status != FLASH_KV_STATUS_OK)
+        {
+            (void)storage_persistence_reload();
+            return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+        }
+    }
+
+    kv_status = flash_kv_set(&s_flash_kv,
+                             STORAGE_PERSISTENCE_ALARM_NEXT_KEY,
+                             &zero, sizeof(zero));
+    if (kv_status != FLASH_KV_STATUS_OK)
+    {
+        (void)storage_persistence_reload();
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    kv_status = flash_kv_set(&s_flash_kv,
+                             STORAGE_PERSISTENCE_ALARM_COUNT_KEY,
+                             &zero, sizeof(zero));
+    if (kv_status != FLASH_KV_STATUS_OK)
+    {
+        (void)storage_persistence_reload();
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    if (storage_persistence_commit_current_context(
+            STORAGE_PERSISTENCE_ALARM_COUNT_KEY, &zero, sizeof(zero)) == 0)
+    {
+        (void)storage_persistence_reload();
         return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
     }
 

@@ -8,6 +8,10 @@
 #define STORAGE_TASK_FILE_PATH_MAX      32U
 #define STORAGE_TASK_PERSIST_PAYLOAD_MAX 64U
 #define STORAGE_TASK_RECORD_QUEUE_LENGTH 16U
+#define STORAGE_TASK_ALARM_RECORD_SIZE   13U
+#define STORAGE_TASK_ALARM_RECORD_MAX    10U
+#define STORAGE_TASK_ALARM_QUERY_PAYLOAD_MAX \
+    (1U + (STORAGE_TASK_ALARM_RECORD_SIZE * STORAGE_TASK_ALARM_RECORD_MAX))
 #define STORAGE_TASK_CONFIG_IMPORT_ERROR_OPEN 1U
 #define STORAGE_TASK_CONFIG_IMPORT_ERROR_READ 2U
 #define STORAGE_TASK_CONFIG_IMPORT_ERROR_PARSE 3U
@@ -174,10 +178,15 @@ int storage_task_file_request_submit(const storage_task_file_request_t *request)
 int storage_task_file_result_get(storage_task_file_result_t *result, uint32_t timeout_ms);
 
 int storage_task_sample_record_submit(float ch0, float ch1);
-int storage_task_alarm_record_submit(uint8_t channel, float threshold, float actual);
+int storage_task_alarm_record_submit(uint8_t channel, float threshold,
+                                     float actual, uint32_t timestamp);
 int storage_task_audit_event_submit(uint8_t event, uint8_t channel,
                                     float value0, float value1,
                                     uint32_t argument);
+
+int storage_task_alarm_records_get(uint8_t *payload, uint16_t capacity,
+                                   uint16_t *length);
+int storage_task_alarm_records_clear(void);
 
 int storage_task_persist_request_submit(
     const storage_task_persist_request_t *request);

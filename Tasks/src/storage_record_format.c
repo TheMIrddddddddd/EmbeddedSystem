@@ -59,6 +59,45 @@ static int storage_record_put_fixed2(char *buffer, uint16_t capacity,
     return 1;
 }
 
+/* days_from_civil（Hinnant 算法）：RTC 日历时间转换为 Unix 秒。 */
+uint32_t storage_record_time_to_unix(const board_rtc_time_t *time)
+{
+    uint32_t year;
+    uint32_t month;
+    uint32_t era;
+    uint32_t year_of_era;
+    uint32_t day_of_year;
+    uint32_t day_of_era;
+    uint32_t days;
+
+    if ((time == 0) || (time->year < 1970U) || (time->month < 1U) ||
+        (time->month > 12U) || (time->date < 1U) || (time->date > 31U) ||
+        (time->hour > 23U) || (time->minute > 59U) ||
+        (time->second > 59U))
+    {
+        return 0U;
+    }
+
+    year = time->year;
+    month = time->month;
+
+    if (month <= 2U)
+    {
+        year -= 1U;
+    }
+
+    era = year / 400U;
+    year_of_era = year - (era * 400U);
+    day_of_year = ((153U * ((month > 2U) ? (month - 3U) : (month + 9U))) +
+                   2U) / 5U + (uint32_t)time->date - 1U;
+    day_of_era = (year_of_era * 365U) + (year_of_era / 4U) -
+                 (year_of_era / 100U) + day_of_year;
+    days = (era * 146097U) + day_of_era - 719468U;
+
+    return (days * 86400U) + ((uint32_t)time->hour * 3600U) +
+           ((uint32_t)time->minute * 60U) + (uint32_t)time->second;
+}
+
 /* 将 RTC 时间写为 YYYY-MM-DD HH:MM:SS；临时缓冲区不成功时不发布输出。 */
 static int storage_record_append_time(const board_rtc_time_t *time,
                                       char *buffer, uint16_t capacity,

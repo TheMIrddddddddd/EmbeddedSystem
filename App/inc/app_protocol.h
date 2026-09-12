@@ -22,6 +22,15 @@ uint8_t app_protocol_auto_report_enabled(void);
 void app_protocol_report_interval_set(uint16_t seconds);
 uint16_t app_protocol_report_interval_get(void);
 
+#define APP_PROTOCOL_CMD_SET_ALARM_MODE       0x0601U
+#define APP_PROTOCOL_CMD_QUERY_ALARM_RECORDS  0x0602U
+#define APP_PROTOCOL_CMD_CLEAR_ALARM_RECORDS  0x0603U
+#define APP_PROTOCOL_CMD_ALARM_EVENT          0x0681U
+#define APP_PROTOCOL_ALARM_MODE_ACTIVE        0x01U
+#define APP_PROTOCOL_ALARM_MODE_PASSIVE       0x02U
+
+uint8_t app_protocol_alarm_report_enabled(void);
+
 /* 0x0101 重启：应答发出后由 ProtocolTask 轮询并执行复位 */
 uint8_t app_protocol_reboot_pending(void);
 

@@ -24,5 +24,8 @@ uint8_t storage_task_fatfs_mounted_get(void);
 int storage_task_audit_event_submit(uint8_t event, uint8_t channel,
                                     float value0, float value1,
                                     uint32_t argument);
+int storage_task_alarm_records_get(uint8_t *payload, uint16_t capacity,
+                                   uint16_t *length);
+int storage_task_alarm_records_clear(void);
 
 #endif

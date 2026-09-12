@@ -11,6 +11,9 @@
 #define TEST_RECORD_OFFSET    12U
 #define TEST_RECORD_CRC_OFFSET 5U
 #define TEST_RECORD_SIZE      47U /* 10B header + 6B key + 31B config */
+#define TEST_ALARM_RECORD_SIZE 13U
+#define TEST_ALARM_RECORD_MAX  10U
+#define TEST_ALARM_QUERY_SIZE  (1U + (TEST_ALARM_RECORD_SIZE * TEST_ALARM_RECORD_MAX))
 
 static uint8_t s_flash[TEST_FLASH_SIZE];
 static int s_program_fail_after;
@@ -470,6 +473,131 @@ static void test_request_handler_returns_flash_diagnostic_result(void)
     TEST_ASSERT_EQUAL_UINT8(0x13U, result.payload[2]);
 }
 
+static uint32_t test_load_u32_be(const uint8_t *data)
+{
+    return ((uint32_t)data[0] << 24U) |
+           ((uint32_t)data[1] << 16U) |
+           ((uint32_t)data[2] << 8U) |
+           (uint32_t)data[3];
+}
+
+static float test_load_float_be(const uint8_t *data)
+{
+    uint8_t little[4];
+    float value;
+
+    little[0] = data[3];
+    little[1] = data[2];
+    little[2] = data[1];
+    little[3] = data[0];
+    (void)memcpy(&value, little, sizeof(value));
+    return value;
+}
+
+static void test_alarm_records_keep_latest_ten_in_reverse_order(void)
+{
+    app_config_t config = test_config(0x0011U, 115200U);
+    uint8_t config_payload[APP_CONFIG_SERIALIZED_SIZE];
+    uint8_t payload[TEST_ALARM_QUERY_SIZE] = {0U};
+    uint16_t length = 0U;
+    uint32_t boot_count = 0U;
+    uint8_t index;
+
+    (void)memset(s_flash, 0xFF, sizeof(s_flash));
+    s_program_fail_after = -1;
+    s_program_calls = 0;
+
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_init());
+    TEST_ASSERT_TRUE(test_config_encode(&config, config_payload));
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_config_save(
+                              config_payload, sizeof(config_payload)));
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_boot_count_next(&boot_count));
+    TEST_ASSERT_EQUAL_UINT32(1U, boot_count);
+
+    for (index = 0U; index < 12U; index++)
+    {
+        TEST_ASSERT_EQUAL_INT(
+            STORAGE_PERSISTENCE_STATUS_OK,
+            storage_persistence_alarm_record_append(
+                100U + index, (uint8_t)(index & 1U),
+                2.5f + (float)index, 3.5f + (float)index));
+    }
+
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_PERSISTENCE_STATUS_OK,
+        storage_persistence_alarm_records_read(payload, sizeof(payload), &length));
+    TEST_ASSERT_EQUAL_UINT16(TEST_ALARM_QUERY_SIZE, length);
+    TEST_ASSERT_EQUAL_UINT8(TEST_ALARM_RECORD_MAX, payload[0]);
+
+    for (index = 0U; index < TEST_ALARM_RECORD_MAX; index++)
+    {
+        const uint8_t *record = &payload[1U +
+                                         (index * TEST_ALARM_RECORD_SIZE)];
+        uint8_t source_index = (uint8_t)(11U - index);
+
+        TEST_ASSERT_EQUAL_UINT32(100U + source_index,
+                                 test_load_u32_be(record));
+        TEST_ASSERT_EQUAL_UINT8((uint8_t)(source_index & 1U), record[4]);
+        TEST_ASSERT_FLOAT_WITHIN(0.0001f, 2.5f + (float)source_index,
+                                 test_load_float_be(&record[5]));
+        TEST_ASSERT_FLOAT_WITHIN(0.0001f, 3.5f + (float)source_index,
+                                 test_load_float_be(&record[9]));
+    }
+
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_init());
+    (void)memset(payload, 0, sizeof(payload));
+    length = 0U;
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_PERSISTENCE_STATUS_OK,
+        storage_persistence_alarm_records_read(payload, sizeof(payload), &length));
+    TEST_ASSERT_EQUAL_UINT8(TEST_ALARM_RECORD_MAX, payload[0]);
+    TEST_ASSERT_EQUAL_UINT32(111U, test_load_u32_be(&payload[1]));
+}
+
+static void test_alarm_records_clear_returns_empty_and_allows_reuse(void)
+{
+    uint8_t payload[TEST_ALARM_QUERY_SIZE] = {0U};
+    uint16_t length = 0U;
+    uint8_t index;
+
+    (void)memset(s_flash, 0xFF, sizeof(s_flash));
+    s_program_fail_after = -1;
+    s_program_calls = 0;
+
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_init());
+    for (index = 0U; index < TEST_ALARM_RECORD_MAX; index++)
+    {
+        TEST_ASSERT_EQUAL_INT(
+            STORAGE_PERSISTENCE_STATUS_OK,
+            storage_persistence_alarm_record_append(
+                1234U + index, (uint8_t)(index & 1U), 10.5f, 11.25f));
+    }
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_alarm_records_clear());
+
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_PERSISTENCE_STATUS_OK,
+        storage_persistence_alarm_records_read(payload, sizeof(payload), &length));
+    TEST_ASSERT_EQUAL_UINT16(1U, length);
+    TEST_ASSERT_EQUAL_UINT8(0U, payload[0]);
+
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_PERSISTENCE_STATUS_OK,
+        storage_persistence_alarm_record_append(5678U, 0U, 1.25f, 2.5f));
+    (void)memset(payload, 0, sizeof(payload));
+    length = 0U;
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_PERSISTENCE_STATUS_OK,
+        storage_persistence_alarm_records_read(payload, sizeof(payload), &length));
+    TEST_ASSERT_EQUAL_UINT8(1U, payload[0]);
+    TEST_ASSERT_EQUAL_UINT32(5678U, test_load_u32_be(&payload[1]));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -485,5 +613,7 @@ int main(void)
     RUN_TEST(test_request_handler_saves_and_reads_config);
     RUN_TEST(test_request_handler_maps_invalid_config_to_data_error);
     RUN_TEST(test_request_handler_returns_flash_diagnostic_result);
+    RUN_TEST(test_alarm_records_keep_latest_ten_in_reverse_order);
+    RUN_TEST(test_alarm_records_clear_returns_empty_and_allows_reuse);
     return UNITY_END();
 }

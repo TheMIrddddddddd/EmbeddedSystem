@@ -8,6 +8,19 @@ static board_rtc_time_t test_time(void)
     return time;
 }
 
+/* 验证告警跨任务事件使用的秒级时间戳与 Unix 纪元一致。 */
+static void test_time_to_unix(void)
+{
+    board_rtc_time_t time = {1970U, 1U, 1U, 0U, 0U, 0U};
+
+    TEST_ASSERT_EQUAL_UINT32(0U, storage_record_time_to_unix(&time));
+    time.year = 2000U;
+    TEST_ASSERT_EQUAL_UINT32(946684800U, storage_record_time_to_unix(&time));
+    time.year = 2026U;
+    time.month = 1U;
+    TEST_ASSERT_EQUAL_UINT32(1767225600U, storage_record_time_to_unix(&time));
+}
+
 /* 验证时间、采样 CSV 和 CRLF 结尾完全符合项目格式。 */
 static void test_sample_text(void)
 {
@@ -61,6 +74,7 @@ void tearDown(void) {}
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_time_to_unix);
     RUN_TEST(test_sample_text);
     RUN_TEST(test_alarm_text);
     RUN_TEST(test_format_errors);
