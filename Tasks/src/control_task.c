@@ -262,12 +262,12 @@ static void control_print_sample_line(const app_config_t *config)
         }
     }
 
-    board_led_set(CONTROL_LED_OVER_LIMIT, (uint8_t)(((ch0_over != 0U) || (ch1_over != 0U)) ? 1U : 0U));
-
     s_sample_line_buffer[pos] = '\r';
     s_sample_line_buffer[pos + 1U] = '\n';
 
     (void)app_cli_write(s_sample_line_buffer, (uint16_t)(pos + 2U));
+    (void)storage_task_sample_record_submit(snapshot.value_ch0,
+                                            snapshot.value_ch1);
 }
 
 static void control_execute_modbus_request(
@@ -463,8 +463,7 @@ static void control_task(void *argument)
         }
         else if (sample_was_enabled != 0U)
         {
-            /* 停止采样时熄灭超限灯 */
-            board_led_set(CONTROL_LED_OVER_LIMIT, 0U);
+            /* AlarmTask 独占 LED3，停止本地打印不改变告警状态。 */
         }
 
         sample_was_enabled = config.local_sample_enabled;
@@ -474,8 +473,12 @@ static void control_task(void *argument)
             /* 《01》四-2：KEY1 按下翻转采样 */
             if ((key_event.key_id == 1U) && (key_event.event == (uint8_t)EBTN_EVT_ONPRESS))
             {
-                (void)app_config_sample_enable_set(
-                    (config.local_sample_enabled != 0U) ? 0U : 1U);
+                uint8_t enabled = (config.local_sample_enabled != 0U) ? 0U : 1U;
+                (void)app_config_sample_enable_set(enabled);
+                (void)storage_task_audit_event_submit(
+                    (enabled != 0U) ? STORAGE_TASK_AUDIT_SAMPLE_START :
+                                      STORAGE_TASK_AUDIT_SAMPLE_STOP,
+                    0U, 0.0f, 0.0f, 0U);
             }
             else if ((key_event.event == (uint8_t)EBTN_EVT_ONPRESS) &&
                      (key_event.key_id >= 2U) &&

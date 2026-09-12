@@ -736,6 +736,8 @@ static void app_cli_apply_ratio(const char *line)
     }
 
     (void)sample_task_ratio_set(s_pending_channel, value);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_RATIO_SET,
+                                          s_pending_channel, value, 0.0f, 0U);
 
     app_cli_print_channel_ok(s_pending_channel, "ratio set to", value);
 }
@@ -752,6 +754,8 @@ static void app_cli_apply_limit(const char *line)
     }
 
     app_cli_print_channel_ok(s_pending_channel, "limit set to", value);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_LIMIT_SET,
+                                          s_pending_channel, value, 0.0f, 0U);
 }
 
 static void app_cli_apply_protocol(const char *line)
@@ -780,6 +784,8 @@ static void app_cli_apply_protocol(const char *line)
     {
         (void)app_cli_print("protocol set to 1 (modbus)");
     }
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_PROTOCOL_SET,
+                                          0U, 0.0f, 0.0f, mode);
 }
 
 static void app_cli_apply_id(const char *line)
@@ -795,6 +801,8 @@ static void app_cli_apply_id(const char *line)
 
     /* 文档原文带 ", saved [OK]"，持久化在 M5，M4 阶段不打印 saved */
     app_cli_print_current_hex4("device id set to ", value);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_DEVICE_ID_SET,
+                                          0U, 0.0f, 0.0f, value);
 }
 
 static void app_cli_apply_baud(const char *line)
@@ -811,6 +819,8 @@ static void app_cli_apply_baud(const char *line)
     board_usart1_rs485_baudrate_set(value);
 
     app_cli_print_current_dec("baudrate set to ", value);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_BAUDRATE_SET,
+                                          0U, 0.0f, 0.0f, value);
 }
 
 /*
@@ -979,6 +989,8 @@ static cli_status_t app_cli_start(int argc, const char *argv[],
     }
 
     (void)app_config_sample_enable_set(1U);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_SAMPLE_START,
+                                          0U, 0.0f, 0.0f, 0U);
 
     (void)strcpy(output, "sampling started");
 
@@ -996,6 +1008,8 @@ static cli_status_t app_cli_stop(int argc, const char *argv[],
     }
 
     (void)app_config_sample_enable_set(0U);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_SAMPLE_STOP,
+                                          0U, 0.0f, 0.0f, 0U);
 
     (void)strcpy(output, "sampling stopped");
 
@@ -1013,6 +1027,8 @@ static cli_status_t app_cli_hide(int argc, const char *argv[],
     }
 
     (void)app_config_hide_mode_set(1U);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_HIDE_ON,
+                                          0U, 0.0f, 0.0f, 0U);
 
     (void)strcpy(output, "hide mode on");
 
@@ -1030,6 +1046,8 @@ static cli_status_t app_cli_unhide(int argc, const char *argv[],
     }
 
     (void)app_config_hide_mode_set(0U);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_HIDE_OFF,
+                                          0U, 0.0f, 0.0f, 0U);
 
     (void)strcpy(output, "hide mode off");
 
@@ -1345,6 +1363,8 @@ static cli_status_t app_cli_test(int argc, const char *argv[],
 
     (void)app_cli_print((all_pass != 0U) ?
         "=== Test Result: PASS ===" : "=== Test Result: FAIL ===");
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_SYSTEM_TEST,
+                                          0U, 0.0f, 0.0f, all_pass);
 
     return CLI_STATUS_OK;
 }
@@ -1371,6 +1391,11 @@ void app_cli_storage_result_poll(void)
 
         if (s_storage_result.status != STORAGE_TASK_PERSIST_STATUS_OK)
         {
+            if (s_storage_pending_operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT)
+            {
+                (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_CONFIG_IMPORT,
+                                                      0U, 0.0f, 0.0f, 0U);
+            }
             app_cli_print_storage_error(s_storage_pending_operation,
                                          s_storage_result.status);
             return;
@@ -1390,6 +1415,8 @@ void app_cli_storage_result_poll(void)
                 return;
             }
             (void)xEventGroupSetBits(task_events_get(), TASK_EVENT_CONFIG_READY);
+            (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_CONFIG_IMPORT,
+                                                  0U, 0.0f, 0.0f, 1U);
             (void)app_cli_print("config.ini loaded and saved [OK]");
             return;
         }

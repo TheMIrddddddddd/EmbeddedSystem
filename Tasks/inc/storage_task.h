@@ -7,6 +7,7 @@
 
 #define STORAGE_TASK_FILE_PATH_MAX      32U
 #define STORAGE_TASK_PERSIST_PAYLOAD_MAX 64U
+#define STORAGE_TASK_RECORD_QUEUE_LENGTH 16U
 
 typedef enum
 {
@@ -85,6 +86,43 @@ typedef struct
 
 typedef enum
 {
+    STORAGE_TASK_RECORD_SAMPLE = 0,
+    STORAGE_TASK_RECORD_ALARM,
+    STORAGE_TASK_RECORD_AUDIT
+} storage_task_record_type_t;
+
+typedef enum
+{
+    STORAGE_TASK_AUDIT_SAMPLE_START = 0,
+    STORAGE_TASK_AUDIT_SAMPLE_STOP,
+    STORAGE_TASK_AUDIT_RATIO_SET,
+    STORAGE_TASK_AUDIT_LIMIT_SET,
+    STORAGE_TASK_AUDIT_PROTOCOL_SET,
+    STORAGE_TASK_AUDIT_DEVICE_ID_SET,
+    STORAGE_TASK_AUDIT_BAUDRATE_SET,
+    STORAGE_TASK_AUDIT_HIDE_ON,
+    STORAGE_TASK_AUDIT_HIDE_OFF,
+    STORAGE_TASK_AUDIT_SYSTEM_TEST,
+    STORAGE_TASK_AUDIT_CONFIG_IMPORT,
+    STORAGE_TASK_AUDIT_ALARM_ACTIVE,
+    STORAGE_TASK_AUDIT_ALARM_RECOVERED
+} storage_task_audit_event_t;
+
+typedef struct
+{
+    uint8_t type;
+    uint8_t event;
+    uint8_t channel;
+    uint8_t reserved;
+    float value0;
+    float value1;
+    float threshold;
+    float actual;
+    uint32_t argument;
+} storage_task_record_request_t;
+
+typedef enum
+{
     STORAGE_TASK_PERSIST_CONFIG_LOAD = 0,
     STORAGE_TASK_PERSIST_CONFIG_READ,
     STORAGE_TASK_PERSIST_CONFIG_SAVE,
@@ -129,6 +167,12 @@ typedef struct
 
 int storage_task_file_request_submit(const storage_task_file_request_t *request);
 int storage_task_file_result_get(storage_task_file_result_t *result, uint32_t timeout_ms);
+
+int storage_task_sample_record_submit(float ch0, float ch1);
+int storage_task_alarm_record_submit(uint8_t channel, float threshold, float actual);
+int storage_task_audit_event_submit(uint8_t event, uint8_t channel,
+                                    float value0, float value1,
+                                    uint32_t argument);
 
 int storage_task_persist_request_submit(
     const storage_task_persist_request_t *request);

@@ -238,6 +238,12 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
         {
             result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
         }
+        else
+        {
+            (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_DEVICE_ID_SET,
+                                                  0U, 0.0f, 0.0f,
+                                                  app_protocol_load_u16_be(payload));
+        }
         break;
 
     case APP_PROTOCOL_CMD_QUERY_BAUD:
@@ -265,6 +271,8 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
             {
                 result->next_baudrate = baudrate;
                 result->apply_flags |= PROTOCOL_RESULT_APPLY_BAUD;
+                (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_BAUDRATE_SET,
+                                                      0U, 0.0f, 0.0f, baudrate);
             }
         }
         break;
@@ -330,6 +338,13 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
             {
                 result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
             }
+            else
+            {
+                (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_LIMIT_SET,
+                                                      channel,
+                                                      app_protocol_load_float_be(payload),
+                                                      0.0f, 0U);
+            }
         }
         break;
 
@@ -352,6 +367,8 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
 
             /* 与 CLI 同款双写：配置模型留底，SampleTask 立即生效 */
             (void)sample_task_ratio_set(channel, ratio);
+            (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_RATIO_SET,
+                                                  channel, ratio, 0.0f, 0U);
         }
         break;
 

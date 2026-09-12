@@ -7,6 +7,7 @@
 
 #include "app_config.h"
 #include "sample_task.h"
+#include "storage_task.h"
 
 #define APP_MODBUS_PARAMETER_END        0x0008U
 #define APP_MODBUS_INPUT_END            0x0004U
@@ -233,12 +234,16 @@ static uint8_t app_modbus_write_parameters(const modbus_request_t *request)
 
             (void)app_config_ratio_set(channel, values[i]);
             (void)sample_task_ratio_set(channel, values[i]);
+            (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_RATIO_SET,
+                                                  channel, values[i], 0.0f, 0U);
         }
         else
         {
             uint8_t channel = (uint8_t)(parameter + i - 2U);
 
             (void)app_config_limit_set(channel, values[i]);
+            (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_LIMIT_SET,
+                                                  channel, values[i], 0.0f, 0U);
         }
     }
 

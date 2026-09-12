@@ -21,6 +21,7 @@ static uint8_t s_verify_sector[STORAGE_PERSISTENCE_SECTOR_SIZE];
 static uint8_t s_config_value[STORAGE_PERSISTENCE_VALUE_MAX];
 static uint8_t s_canonical_config[APP_CONFIG_SERIALIZED_SIZE];
 static uint8_t s_verify_value[STORAGE_PERSISTENCE_VALUE_MAX];
+static uint8_t s_boot_count_value[sizeof(uint32_t)];
 static app_config_t s_config_decode;
 static app_config_t s_config_verify;
 static uint16_t s_record_commit_offsets[FLASH_KV_MAX_RECORDS];
@@ -284,6 +285,7 @@ static int storage_persistence_build_candidate(uint32_t generation,
 }
 
 static int storage_persistence_commit_current_context(
+    const char *expected_key,
     const uint8_t *expected,
     uint16_t expected_length)
 {
@@ -291,7 +293,7 @@ static int storage_persistence_commit_current_context(
     size_t used_length;
     size_t verify_length;
 
-    if ((expected == NULL) ||
+    if ((expected_key == NULL) || (expected == NULL) ||
         (expected_length == 0U))
     {
         return 0;
@@ -333,7 +335,7 @@ static int storage_persistence_commit_current_context(
     verify_length = 0U;
 
     if (flash_kv_get(&s_reopened_flash_kv,
-                     STORAGE_PERSISTENCE_CONFIG_KEY,
+                     expected_key,
                      s_verify_value,
                      sizeof(s_verify_value),
                      &verify_length) != FLASH_KV_STATUS_OK)
@@ -343,9 +345,10 @@ static int storage_persistence_commit_current_context(
 
     if ((verify_length != expected_length) ||
         (memcmp(s_verify_value, expected, expected_length) != 0) ||
-        (app_config_decode(s_verify_value,
-                           (uint16_t)verify_length,
-                           &s_config_verify) == 0))
+        ((strcmp(expected_key, STORAGE_PERSISTENCE_CONFIG_KEY) == 0) &&
+         (app_config_decode(s_verify_value,
+                            (uint16_t)verify_length,
+                            &s_config_verify) == 0)))
     {
         return 0;
     }
@@ -524,13 +527,77 @@ storage_persistence_status_t storage_persistence_config_save(
         return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
     }
 
-    if (storage_persistence_commit_current_context(s_canonical_config,
+    if (storage_persistence_commit_current_context(
+                                                   STORAGE_PERSISTENCE_CONFIG_KEY,
+                                                   s_canonical_config,
                                                    canonical_length) == 0)
     {
         (void)storage_persistence_reload();
         return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
     }
 
+    return STORAGE_PERSISTENCE_STATUS_OK;
+}
+
+/* 读取、递增并原子保存 FlashKV 中的 boot_count；成功后才写出 count。 */
+storage_persistence_status_t storage_persistence_boot_count_next(
+    uint32_t *count)
+{
+    size_t value_length = 0U;
+    flash_kv_status_t kv_status;
+    uint32_t current;
+
+    if (count == NULL)
+    {
+        return STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT;
+    }
+    if (s_storage_persistence_initialized == 0U)
+    {
+        return STORAGE_PERSISTENCE_STATUS_NOT_READY;
+    }
+
+    kv_status = flash_kv_get(&s_flash_kv,
+                             STORAGE_PERSISTENCE_BOOT_COUNT_KEY,
+                             s_boot_count_value,
+                             sizeof(s_boot_count_value),
+                             &value_length);
+    if (kv_status == FLASH_KV_STATUS_NOT_FOUND)
+    {
+        current = 0U;
+    }
+    else if ((kv_status != FLASH_KV_STATUS_OK) ||
+             (value_length != sizeof(s_boot_count_value)))
+    {
+        return STORAGE_PERSISTENCE_STATUS_DATA_ERROR;
+    }
+    else
+    {
+        current = storage_persistence_u32_load_le(s_boot_count_value);
+    }
+
+    current = (current == 0xFFFFFFFFUL) ? 1U : (current + 1U);
+    storage_persistence_u32_store_le(s_boot_count_value, current);
+
+    kv_status = flash_kv_set(&s_flash_kv,
+                             STORAGE_PERSISTENCE_BOOT_COUNT_KEY,
+                             s_boot_count_value,
+                             sizeof(s_boot_count_value));
+    if (kv_status != FLASH_KV_STATUS_OK)
+    {
+        (void)storage_persistence_reload();
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    if (storage_persistence_commit_current_context(
+            STORAGE_PERSISTENCE_BOOT_COUNT_KEY,
+            s_boot_count_value,
+            sizeof(s_boot_count_value)) == 0)
+    {
+        (void)storage_persistence_reload();
+        return STORAGE_PERSISTENCE_STATUS_FLASH_ERROR;
+    }
+
+    *count = current;
     return STORAGE_PERSISTENCE_STATUS_OK;
 }
 

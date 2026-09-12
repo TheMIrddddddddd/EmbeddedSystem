@@ -5,6 +5,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "task_events.h"
+#include "alarm_task.h"
 
 #define SAMPLE_TASK_PRIORITY          4U
 #define SAMPLE_TASK_STACK_DEPTH       256U
@@ -175,6 +176,8 @@ static void sample_task_process_one_sample(void)
     s_sample_snapshot = next_snapshot;
  
     taskEXIT_CRITICAL();
+
+    (void)alarm_task_sample_submit(&next_snapshot);
 
 }
 

@@ -6,6 +6,7 @@
 #include "app_config.h"
 #include "sample_task.h"
 #include "storage_task.h"
+#include "task_events.h"
 
 static unsigned s_critical_depth;
 static TickType_t s_tick;
@@ -17,6 +18,7 @@ static uint8_t s_submit_should_fail;
 static storage_task_persist_result_t s_result;
 static uint8_t s_result_available;
 static uint32_t s_last_baudrate;
+static uint32_t s_event_bits;
 
 void test_critical_enter(void)
 {
@@ -142,6 +144,38 @@ int storage_task_persist_result_get(
     return 1;
 }
 
+int storage_task_audit_event_submit(uint8_t event, uint8_t channel,
+                                    float value0, float value1,
+                                    uint32_t argument)
+{
+    (void)event;
+    (void)channel;
+    (void)value0;
+    (void)value1;
+    (void)argument;
+    return 1;
+}
+
+EventGroupHandle_t task_events_get(void)
+{
+    return (EventGroupHandle_t)&s_event_bits;
+}
+
+BaseType_t xEventGroupSetBits(EventGroupHandle_t group, uint32_t bits)
+{
+    if (group == NULL)
+    {
+        return pdFALSE;
+    }
+    *((uint32_t *)group) |= bits;
+    return pdTRUE;
+}
+
+int control_apply_persisted_config(const storage_task_persist_result_t *result)
+{
+    return (result != NULL) ? 1 : 0;
+}
+
 static void test_set_result(uint8_t operation,
                             uint8_t status,
                             const uint8_t *payload,
@@ -171,6 +205,7 @@ void setUp(void)
     s_submit_should_fail = 0U;
     s_result_available = 0U;
     s_last_baudrate = 0U;
+    s_event_bits = 0U;
     TEST_ASSERT_EQUAL_INT(1, app_config_init());
 }
 

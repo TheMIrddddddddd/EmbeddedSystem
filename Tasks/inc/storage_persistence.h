@@ -10,6 +10,7 @@
 #define STORAGE_PERSISTENCE_SECTOR_A_ADDRESS     0x00000000UL
 #define STORAGE_PERSISTENCE_SECTOR_B_ADDRESS     0x00001000UL
 #define STORAGE_PERSISTENCE_CONFIG_KEY           "config"
+#define STORAGE_PERSISTENCE_BOOT_COUNT_KEY       "boot_count"
 #define STORAGE_PERSISTENCE_VALUE_MAX            64U
 
 typedef enum
@@ -33,6 +34,9 @@ storage_persistence_status_t storage_persistence_config_read(
 storage_persistence_status_t storage_persistence_config_save(
     const uint8_t *payload,
     uint16_t length);
+
+storage_persistence_status_t storage_persistence_boot_count_next(
+    uint32_t *count);
 
 storage_persistence_status_t storage_persistence_flash_diag(uint8_t id[3]);
 

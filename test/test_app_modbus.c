@@ -12,6 +12,13 @@ static unsigned depth, snapshot_reads;
 static int snapshot_ok;
 void test_critical_enter(void) { ++depth; }
 void test_critical_exit(void) { TEST_ASSERT_TRUE(depth > 0); --depth; }
+int storage_task_audit_event_submit(uint8_t event, uint8_t channel,
+                                    float value0, float value1,
+                                    uint32_t argument)
+{
+    (void)event; (void)channel; (void)value0; (void)value1; (void)argument;
+    return 1;
+}
 int sample_task_snapshot_get(sample_snapshot_t *out)
 {
     ++snapshot_reads;

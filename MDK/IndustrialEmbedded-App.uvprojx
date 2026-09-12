@@ -870,6 +870,16 @@
               <FilePath>..\Tasks\src\storage_persistence.c</FilePath>
             </File>
             <File>
+              <FileName>alarm_logic.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\alarm_logic.c</FilePath>
+            </File>
+            <File>
+              <FileName>storage_record_format.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\storage_record_format.c</FilePath>
+            </File>
+            <File>
               <FileName>app_task.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Tasks\src\app_task.c</FilePath>

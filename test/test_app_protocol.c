@@ -82,6 +82,14 @@ int storage_task_sdio_diag_get(storage_task_sdio_diag_t *diag)
     return 1;
 }
 
+int storage_task_audit_event_submit(uint8_t event, uint8_t channel,
+                                    float value0, float value1,
+                                    uint32_t argument)
+{
+    (void)event; (void)channel; (void)value0; (void)value1; (void)argument;
+    return 1;
+}
+
 void setUp(void)
 {
     memset(&s_config, 0, sizeof(s_config));

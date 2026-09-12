@@ -247,6 +247,43 @@ static void test_flash_diag_returns_expected_jedec_id(void)
     TEST_ASSERT_EQUAL_UINT8(0x13U, id[2]);
 }
 
+/* 验证上电计数首次从 1 开始，之后经 FlashKV 读回继续递增。 */
+static void test_boot_count_persists_and_increments(void)
+{
+    uint32_t count = 0U;
+    (void)memset(s_flash, 0xFF, sizeof(s_flash));
+    s_program_fail_after = -1;
+    s_program_calls = 0;
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK, storage_persistence_init());
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_boot_count_next(&count));
+    TEST_ASSERT_EQUAL_UINT32(1U, count);
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_boot_count_next(&count));
+    TEST_ASSERT_EQUAL_UINT32(2U, count);
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK, storage_persistence_init());
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_boot_count_next(&count));
+    TEST_ASSERT_EQUAL_UINT32(3U, count);
+}
+
+/* 验证上电计数参数和 Flash 写失败不会发布伪造计数。 */
+static void test_boot_count_errors(void)
+{
+    uint32_t count = 99U;
+    (void)memset(s_flash, 0xFF, sizeof(s_flash));
+    s_program_fail_after = -1;
+    s_program_calls = 0;
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK, storage_persistence_init());
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_INVALID_ARGUMENT,
+                          storage_persistence_boot_count_next(NULL));
+    s_program_fail_after = 0;
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_FLASH_ERROR,
+                          storage_persistence_boot_count_next(&count));
+    TEST_ASSERT_EQUAL_UINT32(99U, count);
+    s_program_fail_after = -1;
+}
+
 static void test_crc_corruption_is_reported_as_data_error(void)
 {
     app_config_t config = test_config(0x0077U, 115200U);
@@ -364,6 +401,8 @@ int main(void)
     RUN_TEST(test_reopen_keeps_the_latest_config);
     RUN_TEST(test_failed_rotation_keeps_previous_config_after_reopen);
     RUN_TEST(test_flash_diag_returns_expected_jedec_id);
+    RUN_TEST(test_boot_count_persists_and_increments);
+    RUN_TEST(test_boot_count_errors);
     RUN_TEST(test_crc_corruption_is_reported_as_data_error);
     RUN_TEST(test_request_handler_saves_and_reads_config);
     RUN_TEST(test_request_handler_maps_invalid_config_to_data_error);

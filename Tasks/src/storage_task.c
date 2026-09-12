@@ -10,11 +10,13 @@
 #include "queue.h"
 
 #include "board_sdio.h"
+#include "board_rtc.h"
 
 #include "diskio.h"
 #include "ff.h"
 #include "app_config_import.h"
 #include "app_config_ini.h"
+#include "storage_record_format.h"
 
 #define STORAGE_TASK_PRIORITY              3U
 #define STORAGE_TASK_STACK_DEPTH           512U
@@ -30,6 +32,8 @@
 #define STORAGE_TASK_RESULT_QUEUE_LENGTH    4U
 
 #define STORAGE_CARD_INSERT_DEBOUNCE_MS     100U
+#define STORAGE_RECORD_PATH_MAX             48U
+#define STORAGE_RECORD_MAX_ROWS             10U
 
 static StaticTask_t s_storage_task_tcb;
 static StackType_t  s_storage_task_stack[STORAGE_TASK_STACK_DEPTH];
@@ -42,6 +46,7 @@ static StaticQueue_t s_storage_result_queue;
 
 static StaticQueue_t s_storage_file_request_queue;
 static StaticQueue_t s_storage_file_result_queue;
+static StaticQueue_t s_storage_record_queue;
 
 __align(8)
 static uint8_t s_storage_request_queue_storage[STORAGE_TASK_REQUEST_QUEUE_LENGTH * sizeof(storage_task_request_t)];
@@ -55,14 +60,34 @@ static uint8_t s_storage_file_request_queue_storage[STORAGE_TASK_REQUEST_QUEUE_L
 __align(8)
 static uint8_t s_storage_file_result_queue_storage[STORAGE_TASK_RESULT_QUEUE_LENGTH * sizeof(storage_task_file_result_t)];
 
+__align(8)
+static uint8_t s_storage_record_queue_storage[STORAGE_TASK_RECORD_QUEUE_LENGTH * sizeof(storage_task_record_request_t)];
+
 static QueueHandle_t s_storage_request_queue_handle;
 static QueueHandle_t s_storage_result_queue_handle;
 static QueueHandle_t s_storage_file_request_queue_handle;
 static QueueHandle_t s_storage_file_result_queue_handle;
+static QueueHandle_t s_storage_record_queue_handle;
 static storage_task_persist_request_t s_storage_persist_request;
 static storage_task_persist_result_t s_storage_persist_result;
 static uint8_t s_storage_config_file[APP_CONFIG_INI_FILE_MAX + 1U];
 static uint8_t s_storage_config_encoded[APP_CONFIG_SERIALIZED_SIZE];
+
+typedef struct
+{
+    FIL file;
+    char path[STORAGE_RECORD_PATH_MAX];
+    uint8_t open;
+    uint8_t row_count;
+} storage_record_file_t;
+
+static storage_record_file_t s_storage_sample_file;
+static storage_record_file_t s_storage_alarm_file;
+static storage_record_file_t s_storage_audit_file;
+static uint32_t s_storage_audit_boot_count;
+static char s_storage_record_line[STORAGE_RECORD_TEXT_MAX];
+static uint8_t s_storage_record_scan_buffer[128U];
+static storage_task_record_request_t s_storage_record_request;
 static FATFS s_storage_fatfs;
 static volatile FRESULT s_storage_fatfs_mount_result = FR_NOT_READY;
 static volatile uint8_t s_storage_fatfs_mounted;
@@ -78,6 +103,11 @@ static volatile uint32_t s_storage_task_dma_irq_events;
 static volatile uint32_t s_storage_task_sdio_irq_events;
 static volatile uint32_t s_storage_task_dma_irq_count;
 static volatile uint32_t s_storage_task_sdio_irq_count;
+
+/* 记录文件管理函数在插拔卡状态机前置使用。 */
+static void storage_task_record_files_close(void);
+static int storage_task_record_directories_prepare(void);
+static int storage_task_audit_open(uint8_t write_boot_line);
 
 static void storage_sdio_initialize(void)
 {
@@ -140,6 +170,7 @@ static void storage_card_remove_process(void)
     }
 
     /* 先关闭文件访问入口，再清除底层就绪状态。 */
+    storage_task_record_files_close();
     s_storage_fatfs_mounted = 0U;
     s_storage_fatfs_mount_result = FR_NOT_READY;
 
@@ -197,6 +228,11 @@ static void storage_card_insert_process(void)
         return;
     }
     storage_fatfs_mount();
+    if (s_storage_fatfs_mounted != 0U)
+    {
+        (void)storage_task_record_directories_prepare();
+        (void)storage_task_audit_open(0U);
+    }
 }
 
 static void storage_task_sdio_irq_callback(uint32_t dma_events, uint32_t sdio_events)
@@ -390,6 +426,380 @@ static int storage_task_file_path_valid(const char *path)
         }
     }
     return 0;
+}
+
+/* 向路径/日志临时缓冲区追加文本，保留末尾 NUL 空间。 */
+static int storage_task_text_append(char *buffer, uint16_t capacity,
+                                    uint16_t *position, const char *text)
+{
+    uint16_t index = 0U;
+    while (text[index] != '\0')
+    {
+        if ((*position + 1U) >= capacity) return 0;
+        buffer[*position] = text[index++];
+        *position = (uint16_t)(*position + 1U);
+    }
+    return 1;
+}
+
+/* 向文本追加固定宽度十进制数字。 */
+static int storage_task_text_fixed(char *buffer, uint16_t capacity,
+                                   uint16_t *position, uint32_t value,
+                                   uint8_t digits)
+{
+    uint32_t divisor = 1U;
+    uint8_t index;
+    for (index = 1U; index < digits; index++) divisor *= 10U;
+    if (value >= divisor * 10U) return 0;
+    for (index = 0U; index < digits; index++)
+    {
+        if ((*position + 1U) >= capacity) return 0;
+        buffer[*position] = (char)('0' + ((value / divisor) % 10U));
+        *position = (uint16_t)(*position + 1U);
+        divisor /= 10U;
+    }
+    return 1;
+}
+
+/* 向审计文本追加无符号十进制数。 */
+static int storage_task_text_u32(char *buffer, uint16_t capacity,
+                                 uint16_t *position, uint32_t value)
+{
+    char digits[10];
+    uint8_t count = 0U;
+    uint8_t index;
+    do { digits[count++] = (char)('0' + (value % 10U)); value /= 10U; } while (value != 0U);
+    for (index = count; index > 0U; index--)
+    {
+        if ((*position + 1U) >= capacity) return 0;
+        buffer[*position] = digits[index - 1U];
+        *position = (uint16_t)(*position + 1U);
+    }
+    return 1;
+}
+
+/* 向审计文本追加 4 位十六进制设备 ID。 */
+static int storage_task_text_hex4(char *buffer, uint16_t capacity,
+                                  uint16_t *position, uint16_t value)
+{
+    uint8_t index;
+    for (index = 0U; index < 4U; index++)
+    {
+        uint8_t shift = (uint8_t)(12U - (index * 4U));
+        uint8_t digit = (uint8_t)((value >> shift) & 0x0FU);
+        if ((*position + 1U) >= capacity) return 0;
+        buffer[*position] = (char)((digit < 10U) ? ('0' + digit) : ('A' + digit - 10U));
+        *position = (uint16_t)(*position + 1U);
+    }
+    return 1;
+}
+
+/* 向审计文本追加非负浮点数的两位小数。 */
+static int storage_task_text_fixed2(char *buffer, uint16_t capacity,
+                                    uint16_t *position, float value)
+{
+    uint32_t scaled;
+    if (!(value >= 0.0f) || !(value <= 1000000.0f)) return 0;
+    scaled = (uint32_t)((value * 100.0f) + 0.5f);
+    return (storage_task_text_u32(buffer, capacity, position, scaled / 100U) != 0) &&
+           (storage_task_text_append(buffer, capacity, position, ".") != 0) &&
+           (storage_task_text_fixed(buffer, capacity, position, scaled % 100U, 2U) != 0);
+}
+
+/* 路径构造使用的 NUL 终止辅助函数前置声明。 */
+static int storage_task_text_terminate(char *buffer, uint16_t capacity,
+                                       uint16_t *position);
+
+/* 构造 sample/alarm 时间文件路径，使用 ASCII 固定格式兼容 FatFs 当前配置。 */
+static int storage_task_build_time_path(const char *directory, const char *prefix,
+                                        const board_rtc_time_t *time,
+                                        char *path, uint16_t capacity)
+{
+    uint16_t position = 0U;
+    if ((directory == 0) || (prefix == 0) || (time == 0) || (path == 0)) return 0;
+    if ((storage_task_text_append(path, capacity, &position, "0:/") == 0) ||
+        (storage_task_text_append(path, capacity, &position, directory) == 0) ||
+        (storage_task_text_append(path, capacity, &position, "/") == 0) ||
+        (storage_task_text_append(path, capacity, &position, prefix) == 0) ||
+        (storage_task_text_fixed(path, capacity, &position, time->year, 4U) == 0) ||
+        (storage_task_text_fixed(path, capacity, &position, time->month, 2U) == 0) ||
+        (storage_task_text_fixed(path, capacity, &position, time->date, 2U) == 0) ||
+        (storage_task_text_append(path, capacity, &position, "_") == 0) ||
+        (storage_task_text_fixed(path, capacity, &position, time->hour, 2U) == 0) ||
+        (storage_task_text_fixed(path, capacity, &position, time->minute, 2U) == 0) ||
+        (storage_task_text_fixed(path, capacity, &position, time->second, 2U) == 0) ||
+        (storage_task_text_append(path, capacity, &position, ".csv") == 0)) return 0;
+    if (storage_task_text_terminate(path, capacity, &position) == 0) return 0;
+    return 1;
+}
+
+/* 统计已有 CSV 文件的换行条数，避免重启后向已满文件继续追加。 */
+static int storage_task_count_file_rows(const char *path, uint8_t *count)
+{
+    FIL file;
+    UINT transferred;
+    FRESULT result;
+    uint8_t rows = 0U;
+    uint16_t index;
+    result = f_open(&file, path, FA_READ);
+    if (result != FR_OK) return 0;
+    do
+    {
+        result = f_read(&file, s_storage_record_scan_buffer,
+                        sizeof(s_storage_record_scan_buffer), &transferred);
+        if (result != FR_OK) { (void)f_close(&file); return 0; }
+        for (index = 0U; index < transferred; index++)
+            if (s_storage_record_scan_buffer[index] == '\n' && rows < 255U) rows++;
+    } while (transferred == sizeof(s_storage_record_scan_buffer));
+    if (f_close(&file) != FR_OK) return 0;
+    *count = rows;
+    return 1;
+}
+
+/* 打开一个可滚动 CSV 文件；已有未满文件从原记录数继续追加。 */
+static int storage_task_roll_file_open(storage_record_file_t *state,
+                                       const char *directory, const char *prefix,
+                                       const board_rtc_time_t *time)
+{
+    uint8_t rows = 0U;
+    FRESULT result;
+    if ((state == 0) || (directory == 0) || (prefix == 0) || (time == 0)) return 0;
+    if (state->open != 0U) return (state->row_count < STORAGE_RECORD_MAX_ROWS) ? 1 : 0;
+    if (storage_task_build_time_path(directory, prefix, time,
+                                     state->path, sizeof(state->path)) == 0) return 0;
+    result = f_open(&state->file, state->path, FA_OPEN_APPEND | FA_WRITE);
+    if (result != FR_OK) return 0;
+    if (f_size(&state->file) != 0U)
+    {
+        (void)f_close(&state->file);
+        if ((storage_task_count_file_rows(state->path, &rows) == 0) ||
+            (rows >= STORAGE_RECORD_MAX_ROWS))
+        {
+            return 0;
+        }
+        result = f_open(&state->file, state->path, FA_OPEN_APPEND | FA_WRITE);
+        if (result != FR_OK) return 0;
+    }
+    state->row_count = rows;
+    state->open = 1U;
+    return 1;
+}
+
+/* 写入一行并强制 f_sync；失败时关闭当前文件，避免继续使用坏句柄。 */
+static int storage_task_record_write_line(storage_record_file_t *state,
+                                          const char *line, uint16_t length,
+                                          uint8_t count_row)
+{
+    UINT transferred;
+    FRESULT result;
+    if ((state == 0) || (state->open == 0U) || (line == 0) || (length == 0U)) return 0;
+    result = f_write(&state->file, line, length, &transferred);
+    if ((result != FR_OK) || (transferred != length) ||
+        (f_sync(&state->file) != FR_OK))
+    {
+        (void)f_close(&state->file);
+        state->open = 0U;
+        state->row_count = 0U;
+        return 0;
+    }
+    if (count_row != 0U) state->row_count++;
+    return 1;
+}
+
+/* 关闭一个业务文件并同步；StorageTask 拔卡前统一调用。 */
+static void storage_task_record_file_close(storage_record_file_t *state)
+{
+    if ((state != 0) && (state->open != 0U))
+    {
+        (void)f_sync(&state->file);
+        (void)f_close(&state->file);
+        state->open = 0U;
+        state->row_count = 0U;
+    }
+}
+
+/* 关闭 sample、alarm、audit 三个当前文件。 */
+static void storage_task_record_files_close(void)
+{
+    storage_task_record_file_close(&s_storage_sample_file);
+    storage_task_record_file_close(&s_storage_alarm_file);
+    storage_task_record_file_close(&s_storage_audit_file);
+}
+
+/* 确保三类业务目录存在；目录已存在视为成功。 */
+static int storage_task_record_directories_prepare(void)
+{
+    FRESULT sample = f_mkdir("0:/sample");
+    FRESULT alarm = f_mkdir("0:/alarm");
+    FRESULT audit = f_mkdir("0:/audit");
+    return (((sample == FR_OK) || (sample == FR_EXIST)) &&
+            ((alarm == FR_OK) || (alarm == FR_EXIST)) &&
+            ((audit == FR_OK) || (audit == FR_EXIST))) ? 1 : 0;
+}
+
+/* 格式化审计事件，所有值先写入静态记录缓冲区后再交给 FatFs。 */
+static int storage_task_format_audit_event(
+    const storage_task_record_request_t *request,
+    const board_rtc_time_t *time, uint16_t *length)
+{
+    char timestamp[24];
+    uint16_t position = 0U;
+    uint16_t timestamp_length = 0U;
+    if ((request == 0) || (time == 0) || (length == 0U)) return 0;
+    if (storage_record_format_time(time, timestamp, sizeof(timestamp), &timestamp_length) == 0) return 0;
+    if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "[") == 0) ||
+        (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, timestamp) == 0) ||
+        (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "] ") == 0)) return 0;
+    switch ((storage_task_audit_event_t)request->event)
+    {
+    case STORAGE_TASK_AUDIT_SAMPLE_START: if (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "sampling started") == 0) return 0; break;
+    case STORAGE_TASK_AUDIT_SAMPLE_STOP: if (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "sampling stopped") == 0) return 0; break;
+    case STORAGE_TASK_AUDIT_RATIO_SET:
+        if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "ratio ch") == 0) || (storage_task_text_fixed(s_storage_record_line, sizeof(s_storage_record_line), &position, request->channel, 1U) == 0) || (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, " set to ") == 0) || (storage_task_text_fixed2(s_storage_record_line, sizeof(s_storage_record_line), &position, request->value0) == 0)) return 0; break;
+    case STORAGE_TASK_AUDIT_LIMIT_SET:
+        if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "limit ch") == 0) || (storage_task_text_fixed(s_storage_record_line, sizeof(s_storage_record_line), &position, request->channel, 1U) == 0) || (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, " set to ") == 0) || (storage_task_text_fixed2(s_storage_record_line, sizeof(s_storage_record_line), &position, request->value0) == 0)) return 0; break;
+    case STORAGE_TASK_AUDIT_PROTOCOL_SET:
+        if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "protocol mode ") == 0) || (storage_task_text_u32(s_storage_record_line, sizeof(s_storage_record_line), &position, request->argument) == 0)) return 0; break;
+    case STORAGE_TASK_AUDIT_DEVICE_ID_SET:
+        if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "device id set to ") == 0) || (storage_task_text_hex4(s_storage_record_line, sizeof(s_storage_record_line), &position, (uint16_t)request->argument) == 0)) return 0; break;
+    case STORAGE_TASK_AUDIT_BAUDRATE_SET:
+        if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "baudrate set to ") == 0) || (storage_task_text_u32(s_storage_record_line, sizeof(s_storage_record_line), &position, request->argument) == 0)) return 0; break;
+    case STORAGE_TASK_AUDIT_HIDE_ON: if (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "hide mode on") == 0) return 0; break;
+    case STORAGE_TASK_AUDIT_HIDE_OFF: if (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "hide mode off") == 0) return 0; break;
+    case STORAGE_TASK_AUDIT_SYSTEM_TEST: if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "system test: ") == 0) || (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, (request->argument != 0U) ? "PASS" : "FAIL") == 0)) return 0; break;
+    case STORAGE_TASK_AUDIT_CONFIG_IMPORT: if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "config import: ") == 0) || (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, (request->argument != 0U) ? "OK" : "FAIL") == 0)) return 0; break;
+    case STORAGE_TASK_AUDIT_ALARM_ACTIVE:
+        if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "alarm: CH") == 0) || (storage_task_text_fixed(s_storage_record_line, sizeof(s_storage_record_line), &position, request->channel, 1U) == 0) || (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, " ") == 0) || (storage_task_text_fixed2(s_storage_record_line, sizeof(s_storage_record_line), &position, request->actual) == 0) || (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, " > ") == 0) || (storage_task_text_fixed2(s_storage_record_line, sizeof(s_storage_record_line), &position, request->threshold) == 0)) return 0; break;
+    case STORAGE_TASK_AUDIT_ALARM_RECOVERED:
+        if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "alarm recovered: CH") == 0) || (storage_task_text_fixed(s_storage_record_line, sizeof(s_storage_record_line), &position, request->channel, 1U) == 0) || (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, " ") == 0) || (storage_task_text_fixed2(s_storage_record_line, sizeof(s_storage_record_line), &position, request->actual) == 0) || (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, " < ") == 0) || (storage_task_text_fixed2(s_storage_record_line, sizeof(s_storage_record_line), &position, request->threshold) == 0)) return 0; break;
+    default: return 0;
+    }
+    if (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "\r\n") == 0) return 0;
+    if (storage_task_text_terminate(s_storage_record_line, sizeof(s_storage_record_line), &position) == 0) return 0;
+    *length = (uint16_t)(position - 1U);
+    (void)timestamp_length;
+    return 1;
+}
+
+/* 直接在临时缓冲区末尾写入 NUL，供路径和日志交给 FatFs。 */
+static int storage_task_text_terminate(char *buffer, uint16_t capacity,
+                                       uint16_t *position)
+{
+    if (*position >= capacity) return 0;
+    buffer[*position] = '\0';
+    return 1;
+}
+
+/* 打开当前 boot 对应的审计文件，并在首次打开时写入 boot #N。 */
+static int storage_task_audit_open(uint8_t write_boot_line)
+{
+    board_rtc_time_t time;
+    char timestamp[24];
+    uint16_t position = 0U;
+    uint16_t time_length = 0U;
+    FRESULT result;
+    if (s_storage_fatfs_mounted == 0U || s_storage_audit_boot_count == 0U) return 0;
+    if (s_storage_audit_file.open != 0U) return 1;
+    if (storage_task_record_directories_prepare() == 0) return 0;
+    (void)memset(s_storage_audit_file.path, 0, sizeof(s_storage_audit_file.path));
+    if ((storage_task_text_append(s_storage_audit_file.path, sizeof(s_storage_audit_file.path), &position, "0:/audit/boot_") == 0) ||
+        (storage_task_text_fixed(s_storage_audit_file.path, sizeof(s_storage_audit_file.path), &position, s_storage_audit_boot_count, 6U) == 0) ||
+        (storage_task_text_append(s_storage_audit_file.path, sizeof(s_storage_audit_file.path), &position, ".log") == 0) ||
+        (storage_task_text_terminate(s_storage_audit_file.path, sizeof(s_storage_audit_file.path), &position) == 0)) return 0;
+    result = f_open(&s_storage_audit_file.file, s_storage_audit_file.path,
+                    FA_OPEN_APPEND | FA_WRITE);
+    if (result != FR_OK) return 0;
+    s_storage_audit_file.open = 1U;
+    s_storage_audit_file.row_count = 0U;
+    if (write_boot_line == 0U) return 1;
+    if (board_rtc_time_get(&time) == 0) { storage_task_record_file_close(&s_storage_audit_file); return 0; }
+    if (storage_record_format_time(&time, timestamp, sizeof(timestamp), &time_length) == 0) { storage_task_record_file_close(&s_storage_audit_file); return 0; }
+    position = 0U;
+    if ((storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "[") == 0) ||
+        (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, timestamp) == 0) ||
+        (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "] boot #") == 0) ||
+        (storage_task_text_u32(s_storage_record_line, sizeof(s_storage_record_line), &position, s_storage_audit_boot_count) == 0) ||
+        (storage_task_text_append(s_storage_record_line, sizeof(s_storage_record_line), &position, "\r\n") == 0) ||
+        (storage_task_text_terminate(s_storage_record_line, sizeof(s_storage_record_line), &position) == 0) ||
+        (storage_task_record_write_line(&s_storage_audit_file, s_storage_record_line,
+                                        (uint16_t)(position - 1U), 0U) == 0))
+    {
+        storage_task_record_file_close(&s_storage_audit_file);
+        return 0;
+    }
+    (void)time_length;
+    return 1;
+}
+
+/* 写入一条采样记录；达到 10 条后关闭当前文件，下一条使用新时间文件。 */
+static void storage_task_write_sample_record(const storage_task_record_request_t *request)
+{
+    board_rtc_time_t time;
+    uint16_t length = 0U;
+    if ((request == 0) || (s_storage_fatfs_mounted == 0U) ||
+        (board_rtc_time_get(&time) == 0)) return;
+    if (s_storage_sample_file.row_count >= STORAGE_RECORD_MAX_ROWS)
+        storage_task_record_file_close(&s_storage_sample_file);
+    if ((s_storage_sample_file.open == 0U) &&
+        (storage_task_roll_file_open(&s_storage_sample_file, "sample", "sample_", &time) == 0)) return;
+    if ((storage_record_format_sample(&time, request->value0, request->value1,
+                                     s_storage_record_line,
+                                     sizeof(s_storage_record_line), &length) == 0) ||
+        (storage_task_record_write_line(&s_storage_sample_file,
+                                        s_storage_record_line, length, 1U) == 0)) return;
+}
+
+/* 写入一条告警记录；每条记录均同步到 TF 卡。 */
+static void storage_task_write_alarm_record(const storage_task_record_request_t *request)
+{
+    board_rtc_time_t time;
+    uint16_t length = 0U;
+    if ((request == 0) || (s_storage_fatfs_mounted == 0U) ||
+        (board_rtc_time_get(&time) == 0)) return;
+    if (s_storage_alarm_file.row_count >= STORAGE_RECORD_MAX_ROWS)
+        storage_task_record_file_close(&s_storage_alarm_file);
+    if ((s_storage_alarm_file.open == 0U) &&
+        (storage_task_roll_file_open(&s_storage_alarm_file, "alarm", "alarm_", &time) == 0)) return;
+    if ((storage_record_format_alarm(&time, request->channel, request->threshold,
+                                     request->actual, s_storage_record_line,
+                                     sizeof(s_storage_record_line), &length) == 0) ||
+        (storage_task_record_write_line(&s_storage_alarm_file,
+                                        s_storage_record_line, length, 1U) == 0)) return;
+}
+
+/* 写入一条关键审计事件；审计记录同样使用 f_sync 保证断电可见。 */
+static void storage_task_write_audit_record(const storage_task_record_request_t *request)
+{
+    board_rtc_time_t time;
+    uint16_t length = 0U;
+    if ((request == 0) || (s_storage_fatfs_mounted == 0U)) return;
+    if (s_storage_audit_file.open == 0U && storage_task_audit_open(0U) == 0) return;
+    if ((board_rtc_time_get(&time) == 0) ||
+        (storage_task_format_audit_event(request, &time, &length) == 0)) return;
+    (void)storage_task_record_write_line(&s_storage_audit_file,
+                                         s_storage_record_line, length, 0U);
+}
+
+/* 从按值队列取出一条业务记录，由 StorageTask 统一执行文件操作。 */
+static void storage_task_process_record_request(void)
+{
+    if ((s_storage_record_queue_handle == 0) ||
+        (xQueueReceive(s_storage_record_queue_handle,
+                       &s_storage_record_request, 0U) != pdPASS)) return;
+    switch ((storage_task_record_type_t)s_storage_record_request.type)
+    {
+    case STORAGE_TASK_RECORD_SAMPLE:
+        storage_task_write_sample_record(&s_storage_record_request);
+        break;
+    case STORAGE_TASK_RECORD_ALARM:
+        storage_task_write_alarm_record(&s_storage_record_request);
+        break;
+    case STORAGE_TASK_RECORD_AUDIT:
+        storage_task_write_audit_record(&s_storage_record_request);
+        break;
+    default:
+        break;
+    }
 }
 
 static void storage_task_process_file_request(void)
@@ -594,10 +1004,18 @@ static void storage_task(void *argument)
 
     (void)argument;
 
-    (void)storage_persistence_init();
+    if (storage_persistence_init() == STORAGE_PERSISTENCE_STATUS_OK)
+    {
+        (void)storage_persistence_boot_count_next(&s_storage_audit_boot_count);
+    }
     storage_task_publish_config_load();
     storage_sdio_initialize();
     storage_fatfs_mount();
+    if (s_storage_fatfs_mounted != 0U)
+    {
+        (void)storage_task_record_directories_prepare();
+        (void)storage_task_audit_open(1U);
+    }
 
     s_storage_card_insert_attempted =
         (board_sdio_card_present() != 0U) ? 1U : 0U;
@@ -624,6 +1042,7 @@ static void storage_task(void *argument)
         storage_task_process_request();
         storage_task_process_file_request();
         storage_task_process_persist_request();
+        storage_task_process_record_request();
 
         s_storage_task_sdio_diag.dma_irq_events =
             s_storage_task_dma_irq_events;
@@ -688,6 +1107,17 @@ int storage_task_create(void)
     );
 
     if (s_storage_file_result_queue_handle == NULL)
+    {
+        return 0;
+    }
+
+    s_storage_record_queue_handle = xQueueCreateStatic(
+        STORAGE_TASK_RECORD_QUEUE_LENGTH,
+        sizeof(storage_task_record_request_t),
+        s_storage_record_queue_storage,
+        &s_storage_record_queue);
+
+    if (s_storage_record_queue_handle == NULL)
     {
         return 0;
     }
@@ -773,6 +1203,55 @@ int storage_task_file_result_get(storage_task_file_result_t *result, uint32_t ti
         return 0;
     }
     return 1;    
+}
+
+/* 提交一条采样值拷贝；调用者不向 StorageTask 传递可复用缓冲区指针。 */
+int storage_task_sample_record_submit(float ch0, float ch1)
+{
+    storage_task_record_request_t request;
+    if (s_storage_record_queue_handle == 0) return 0;
+    (void)memset(&request, 0, sizeof(request));
+    request.type = STORAGE_TASK_RECORD_SAMPLE;
+    request.value0 = ch0;
+    request.value1 = ch1;
+    return (xQueueSend(s_storage_record_queue_handle, &request, 0U) == pdPASS) ? 1 : 0;
+}
+
+/* 提交一条告警值拷贝；AlarmTask 只负责产生事件，文件操作留在 StorageTask。 */
+int storage_task_alarm_record_submit(uint8_t channel, float threshold, float actual)
+{
+    storage_task_record_request_t request;
+    if ((s_storage_record_queue_handle == 0) || (channel >= 2U)) return 0;
+    (void)memset(&request, 0, sizeof(request));
+    request.type = STORAGE_TASK_RECORD_ALARM;
+    request.channel = channel;
+    request.threshold = threshold;
+    request.actual = actual;
+    return (xQueueSend(s_storage_record_queue_handle, &request, 0U) == pdPASS) ? 1 : 0;
+}
+
+/* 提交关键审计事件，参数按值复制进静态队列，避免跨任务裸指针。 */
+int storage_task_audit_event_submit(uint8_t event, uint8_t channel,
+                                    float value0, float value1,
+                                    uint32_t argument)
+{
+    storage_task_record_request_t request;
+    if ((s_storage_record_queue_handle == 0) ||
+        (event > STORAGE_TASK_AUDIT_ALARM_RECOVERED) || (channel >= 2U &&
+         ((event == STORAGE_TASK_AUDIT_RATIO_SET) ||
+          (event == STORAGE_TASK_AUDIT_LIMIT_SET) ||
+          (event == STORAGE_TASK_AUDIT_ALARM_ACTIVE) ||
+          (event == STORAGE_TASK_AUDIT_ALARM_RECOVERED)))) return 0;
+    (void)memset(&request, 0, sizeof(request));
+    request.type = STORAGE_TASK_RECORD_AUDIT;
+    request.event = event;
+    request.channel = channel;
+    request.value0 = value0;
+    request.value1 = value1;
+    request.actual = value0;
+    request.threshold = value1;
+    request.argument = argument;
+    return (xQueueSend(s_storage_record_queue_handle, &request, 0U) == pdPASS) ? 1 : 0;
 }
 
 int storage_task_persist_request_submit(
