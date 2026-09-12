@@ -333,6 +333,18 @@ static void test_matching_result_is_required_before_clearing_pending_state(void)
     TEST_ASSERT_NOT_NULL(strstr(s_output, "save to flash [OK]"));
 }
 
+/* 验证 config import 解析失败能显示错误行号，而不是笼统 data error。 */
+static void test_config_import_parse_error_reports_line(void)
+{
+    const uint8_t payload[] = {3U, 7U, 0U};
+    app_cli_execute_line("conf");
+    test_set_result(STORAGE_TASK_PERSIST_CONFIG_IMPORT,
+                    STORAGE_TASK_PERSIST_STATUS_DATA_ERROR,
+                    payload, sizeof(payload));
+    app_cli_storage_result_poll();
+    TEST_ASSERT_NOT_NULL(strstr(s_output, "config import parse error at line 7"));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -342,5 +354,6 @@ int main(void)
     RUN_TEST(test_second_config_request_is_rejected_while_pending);
     RUN_TEST(test_storage_submit_failure_is_reported_without_pending_state);
     RUN_TEST(test_matching_result_is_required_before_clearing_pending_state);
+    RUN_TEST(test_config_import_parse_error_reports_line);
     return UNITY_END();
 }

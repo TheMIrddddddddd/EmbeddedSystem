@@ -916,6 +916,14 @@ static void storage_task_process_persist_request(void)
     uint16_t encoded_length;
     uint16_t error_line;
 
+    /* 将导入阶段和错误明细放入结果 payload，供 CLI 显示具体原因。 */
+    #define STORAGE_TASK_SET_IMPORT_ERROR(code, detail) do { \
+        s_storage_persist_result.payload_length = 3U; \
+        s_storage_persist_result.payload[0] = (code); \
+        s_storage_persist_result.payload[1] = (uint8_t)((detail) & 0xFFU); \
+        s_storage_persist_result.payload[2] = (uint8_t)(((detail) >> 8U) & 0xFFU); \
+    } while (0)
+
     if (storage_persist_request_receive(&s_storage_persist_request, 0U) != pdPASS)
     {
         return;
@@ -941,15 +949,30 @@ static void storage_task_process_persist_request(void)
         }
         if (file_status != FR_OK)
         {
+            STORAGE_TASK_SET_IMPORT_ERROR(STORAGE_TASK_CONFIG_IMPORT_ERROR_OPEN,
+                                          (uint16_t)file_status);
             s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_DATA_ERROR;
             (void)storage_persist_result_send(&s_storage_persist_result);
             return;
         }
         file_status = f_read(&file, s_storage_config_file,
                              sizeof(s_storage_config_file), &transferred);
-        (void)f_close(&file);
-        if ((file_status != FR_OK) || (transferred > APP_CONFIG_INI_FILE_MAX))
         {
+            FRESULT close_status = f_close(&file);
+            if ((file_status != FR_OK) || (close_status != FR_OK))
+            {
+                STORAGE_TASK_SET_IMPORT_ERROR(
+                    STORAGE_TASK_CONFIG_IMPORT_ERROR_READ,
+                    (uint16_t)((file_status != FR_OK) ? file_status : close_status));
+                s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_DATA_ERROR;
+                (void)storage_persist_result_send(&s_storage_persist_result);
+                return;
+            }
+        }
+        if (transferred > APP_CONFIG_INI_FILE_MAX)
+        {
+            STORAGE_TASK_SET_IMPORT_ERROR(STORAGE_TASK_CONFIG_IMPORT_ERROR_SIZE,
+                                          (uint16_t)transferred);
             s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_DATA_ERROR;
             (void)storage_persist_result_send(&s_storage_persist_result);
             return;
@@ -963,6 +986,10 @@ static void storage_task_process_persist_request(void)
                                       sizeof(s_storage_config_encoded),
                                       &encoded_length, &error_line) == 0)
         {
+            STORAGE_TASK_SET_IMPORT_ERROR(
+                (error_line != 0U) ? STORAGE_TASK_CONFIG_IMPORT_ERROR_PARSE :
+                                    STORAGE_TASK_CONFIG_IMPORT_ERROR_SERVICE,
+                error_line);
             s_storage_persist_result.status = STORAGE_TASK_PERSIST_STATUS_DATA_ERROR;
             (void)storage_persist_result_send(&s_storage_persist_result);
             return;
@@ -981,6 +1008,7 @@ static void storage_task_process_persist_request(void)
         (void)storage_persist_result_send(&s_storage_persist_result);
         return;
     }
+    #undef STORAGE_TASK_SET_IMPORT_ERROR
     if (storage_persistence_request_handle(&s_storage_persist_request,
                                            &s_storage_persist_result) == 0)
     {

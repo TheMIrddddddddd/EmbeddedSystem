@@ -5,6 +5,9 @@ void test_critical_enter(void) {}
 void test_critical_exit(void) {}
 static void base_config(app_config_t *c) { TEST_ASSERT_EQUAL_INT(1, app_config_defaults(c)); c->rs485_baudrate=57600U; c->local_sample_enabled=1U; c->hide_mode=1U; }
 static const char valid_file[] = "device_id=0002\nsample_period=10\nprotocol_mode=0\nalarm_mode=1\nch0_ratio=2.5\nch1_ratio=3.5\nch0_limit=250\nch1_limit=499.5\n";
+/* 验证当前 TF 卡上使用的 130 字节 CRLF 文件可完整导入。 */
+static void test_card_file_content(void)
+{ const char f[]="device_id=0001\r\nsample_period=10\r\nch0_ratio=2.00\r\nch0_limit=3.00\r\nch1_ratio=1.50\r\nch1_limit=12.50\r\nprotocol_mode=0\r\nalarm_mode=2\r\n"; app_config_t b,c; uint8_t e[31]; uint16_t n=0,l=0; base_config(&b); c=b; TEST_ASSERT_EQUAL_INT(1,app_config_import_prepare(f,sizeof(f)-1U,&b,&c,e,sizeof(e),&n,&l)); TEST_ASSERT_EQUAL_UINT8(10U,c.sample_period_s); TEST_ASSERT_EQUAL_FLOAT(2.0f,c.ratio[0]); TEST_ASSERT_EQUAL_FLOAT(12.5f,c.limit[1]); }
 /* 验证完整导入、31 字节序列化、decode 回读及快照字段继承。 */
 static void test_round_trip(void)
 { app_config_t b,c; uint8_t e[31]; uint16_t n=0,l=0; base_config(&b); c=b; TEST_ASSERT_EQUAL_INT(1,app_config_import_prepare(valid_file,sizeof(valid_file)-1U,&b,&c,e,sizeof(e),&n,&l)); TEST_ASSERT_EQUAL_UINT16(31U,n); TEST_ASSERT_EQUAL_UINT16(2U,c.device_id); TEST_ASSERT_EQUAL_FLOAT(2.5f,c.ratio[0]); TEST_ASSERT_EQUAL_FLOAT(499.5f,c.limit[1]); TEST_ASSERT_EQUAL_UINT32(57600U,c.rs485_baudrate); TEST_ASSERT_EQUAL_UINT8(1U,c.local_sample_enabled); }
@@ -15,4 +18,4 @@ static void test_failure_atomic(void)
 static void test_arguments(void)
 { app_config_t b,c; uint8_t e[31]; uint16_t n=7,l=9; base_config(&b); c=b; TEST_ASSERT_EQUAL_INT(0,app_config_import_prepare(valid_file,sizeof(valid_file)-1U,&b,&c,e,30,&n,&l)); TEST_ASSERT_EQUAL_UINT16(7U,n); TEST_ASSERT_EQUAL_UINT16(9U,l); }
 void setUp(void) {} void tearDown(void) {}
-int main(void) { UNITY_BEGIN(); RUN_TEST(test_round_trip); RUN_TEST(test_failure_atomic); RUN_TEST(test_arguments); return UNITY_END(); }
+int main(void) { UNITY_BEGIN(); RUN_TEST(test_round_trip); RUN_TEST(test_card_file_content); RUN_TEST(test_failure_atomic); RUN_TEST(test_arguments); return UNITY_END(); }
