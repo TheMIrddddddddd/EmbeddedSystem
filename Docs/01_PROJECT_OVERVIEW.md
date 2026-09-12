@@ -1092,7 +1092,7 @@ NORMAL
 
 **当前设计约束(待 M1/M5/M6 验证):**
 - 内部 `0x08010000~0x08011FFF` 仅作为旧布局保留区,不再存储升级状态或固件元数据;M1 实测表明 OpenOCD 与 Keil 烧录 App 均会擦除其所在扇区
-- 升级元数据外部化至 GD25Q40E,采用两个独立 4KB SPI NOR sector 轮换;建议使用 GD25Q40E sector 2/3,最终地址由 M5 外部分区表冻结
+- 升级元数据外部化至 GD25Q40E,采用两个独立 4KB SPI NOR sector 轮换;建议使用 GD25Q40E sector 2/3,最终地址由 M6 在元数据状态机阶段冻结
 - 外部 Meta 槽必须使用固定长度序列化、CRC、generation 与最后写入的 commit marker;单槽擦除/写入失败不得破坏另一槽有效记录
 - App 区/备份区/暂存区大小不变;512KB 内部 Flash 尾部 `0x08072000~0x0807FFFF` 保留,不得被当前 Boot/App 链接脚本占用
 - **对齐规则(精确):** 所有可擦除分区(扇区/4KB 页)的**起始地址与大小**按 4KB 对齐;manifest 存放地址为分区末尾 64B 保留区**起点**(如 `0x08031FC0`),**不要求 4KB 对齐,也不得作为擦除/编程地址**——manifest 只能随所在页/扇区整体擦除后重写,编程遵循 Flash 字/半字粒度规则
@@ -1570,7 +1570,7 @@ Bootloader 安装完成 → FW_STATE_TRIAL_PENDING → 启动新 APP
 
 ### 10、外部升级元数据双槽记录(强制,掉电原子性)
 
-**GD25Q40E 外部升级元数据采用双槽记录(slot A / slot B),每槽占一个独立 4KB sector,写入带提交标志。建议使用 sector 2/3,最终地址由 M5 外部分区表冻结;内部 Flash 的旧 slot A/B 已退役。**
+**GD25Q40E 外部升级元数据采用双槽记录(slot A / slot B),每槽占一个独立 4KB sector,写入带提交标志。建议使用 sector 2/3,最终地址由 M6 在实现阶段冻结;内部 Flash 的旧 slot A/B 已退役。**
 
 ```c
 typedef struct {

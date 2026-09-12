@@ -37,6 +37,7 @@ static StackType_t  s_control_task_stack[CONTROL_TASK_STACK_DEPTH];
 
 static volatile uint32_t s_control_task_heartbeat;
 static volatile uint32_t s_control_task_stack_high_water_mark;
+static uint8_t s_control_task_tf_full_reported;
 
 /*
  * 行缓冲放静态区而不放栈上：129B 加上 cli_execute_line 内部
@@ -523,15 +524,28 @@ static void control_task(void *argument)
             {
                 storage_task_sdio_diag_t diag;
                 uint8_t tf_ok = 0U;
+                uint8_t tf_full = 0U;
 
                 s_led_last_second = seconds;
 
                 board_led_set(1U, (uint8_t)((seconds % 2U) != 0U));
 
                 (void)storage_task_sdio_diag_get(&diag);
-                tf_ok = storage_task_fatfs_mounted_get();
+                tf_ok = storage_task_fatfs_storage_enabled_get();
+                tf_full = storage_task_fatfs_full_get();
 
                 board_led_set(5U, tf_ok);
+
+                if ((tf_full != 0U) &&
+                    (s_control_task_tf_full_reported == 0U))
+                {
+                    (void)app_cli_print("TF card full");
+                    s_control_task_tf_full_reported = 1U;
+                }
+                else if (tf_full == 0U)
+                {
+                    s_control_task_tf_full_reported = 0U;
+                }
             }
         }
 

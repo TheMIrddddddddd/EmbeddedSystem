@@ -252,7 +252,7 @@ BSP/Boards/gd32f470ve_v1/board_dma_map.h   ← 后续 DMA/定时器通道静态�
    Common/  BSP/Boards/gd32f470ve_v1/  Middleware/  Services/  Tasks/  App/  Bootloader/
    Libraries/(SPL,不动)  Driver/(CMSIS,不动)  User/(逐步废弃)
    ```
-2. **先建 Common 最小子集**:`common_flash_layout.h`(内部 Flash Boot/App/Backup/Staging 地址宏 + manifest 宏);外部 GD25Q40E 元数据槽地址属于 M5 分区契约,冻结后再加入对应 Common 存储定义;
+2. **先建 Common 最小子集**:`common_flash_layout.h`(内部 Flash Boot/App/Backup/Staging 地址宏 + manifest 宏);外部 GD25Q40E 元数据槽地址由 M6 在元数据状态机设计阶段冻结,冻结后再加入对应 Common 存储定义;
 3. **拆出 Boot 工程**(Keil 主力):0x08000000 裸机,最小 LED + 5s 等待 + 跳转 App(跳转前按《01》十二-8 的 10 步序列:先校验 MSP 与复位向量,通过后再关中断/关 SysTick/反初始化/NVIC 清中断,最后 VTOR/MSP/跳转);
 4. **改造 App 工程**(Keil + EIDE):链接到 0x08012000,`SCB->VTOR = APP_BASE`,闪灯频率与 Boot 区分(如 2Hz vs 0.5Hz,肉眼可辨谁在跑);
 5. **双工具链对齐**:AC5 scatter 与 GCC `gd32f470xE_flash.ld` 都按统一分区产出,两边都能编译烧录;
@@ -533,7 +533,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 **GD25Q40E 角色边界:** M5 先实现参数/告警等业务存储;升级包和备份镜像属于后续 M6 升级流程的可选外部存储,具体地址、格式和掉电策略等做到对应阶段再确定。
 
-**外部分区协调点(实测结论引入,强制):** M5 定稿 GD25Q40E 外部分区表时,**必须为 M6 元数据槽预留独立扇区**(建议 sector 2/3 双 4KB 槽轮换),不得把分区表全部划给业务 KV;M1 已实测内部 Meta 槽会被工具烧 App 整扇区擦除,元数据只能外部化,故该预留为硬约束,地址随 M5 分区表冻结写入 Common 宏。
+**M6 外部分区前置(决策更新 2026-09-13):** M5 只冻结 GD25Q40E 业务 KV 使用 sector 0/1,不在本阶段确定升级元数据地址或修改 Common 布局宏;元数据双槽建议使用 sector 2/3,由 M6 在实现双槽状态机前统一冻结地址、序列化契约和独占访问边界。M1 已实测内部 Meta 槽会被工具烧 App 整扇区擦除,因此元数据必须外部化。
 
 **验收关卡:** P 类验收项(P-01~P-03、Q-01~Q-02)+ 十三-5 使能位联动规则。
 
@@ -547,8 +547,9 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 - M5-5 最终板测闭环(2026-09-13):电脑侧确认 TF 卷为 MBR + exFAT,初始状态为 `Dirty / Full Repair Needed`,且 `audit` 目录不可读;执行 `chkdsk G: /f` 后卷恢复为 `Healthy / OK`,dirty 标志清除,`audit` 目录恢复可读,坏扇区为 0 KB。
 - DMA 写启动时序修正: `board_sdio_write_block_dma_polling()` 按 `CMD24 → 数据状态机 → 配置并使能 DMA 通道 → 打开 SDIO DMA 请求` 启动,避免 SDIO 请求早于 DMA 通道就绪而触发 `FEE`。Keil AC5 重构建 `0 error / 0 warning`。
 - 修正后板测:上电自动挂载 [PASS];实际告警 `f_open/f_write/f_sync` 写入后 `0x0701=01` 保持;TF 卡拔出并重新插入后 COM9 自检、FatFs 重挂载和 `0x0701=01` 均 [PASS];重插后再次告警写入通过,Flash 告警记录由 6 条增至 7 条,采样查询持续正常。
-- 当前板测遗留状态:设备中的告警记录为测试数据,未清除;CH0/CH1 当前运行阈值为 `3.00 / 12.50`,生产阈值尚待确认,不能直接作为出厂配置。
+- 生产配置与 Q-01 收尾(2026-09-13):CH0/CH1 已按生产配置设为 `2.50 / 12.50`,并通过 `config save`、`config read` 及软件重启后的全字段回读;用户确认此前已完成真实断电→上电参数保持验收,本轮不重复断电。当前 CH0 采样约 4.56V,高于 2.50V 会产生真实超限告警,不再视为测试告警。
 - FatFs 后端策略调整(2026-09-13):按现场稳定性要求,`Middleware/FatFs/src/diskio.c` 改回 `board_sdio_read_block()` / `board_sdio_write_block()` 的 CPU FIFO 轮询路径,不再调用 SDIO DMA 接口;DMA1/Channel6 的 BSP 底层能力保留,但不属于当前 FatFs 文件访问链路,后续 M5 文件验收以轮询路径为准。
+- TF 卡满处理实现(2026-09-13):StorageTask 挂载后及业务写入前调用 FatFs `f_getfree()`,按空闲簇数低于总簇数 5% 置 `TF full`;FatFs 保持挂载但关闭 sample/alarm/audit 及通用 TF 写入,告警仍先写 GD25Q40E,ControlTask 通过 COM9 一次性提示 `TF card full`,重新挂载并恢复空间后清除满卡状态。5% 边界策略用例已加入 `test_storage_mount_policy.c`,AC5 重构建 `0 error / 0 warning`;真实满卡硬件注入待后续验收。
 
 ---
 
@@ -560,7 +561,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 1. 五阶段在线升级:0x0500 ENTER_BOOT(仅 APP)/ 0x0501 BEGIN / 0x0502 DATA(先写后 ACK)/ 0x0503 END / 0x0504 INSTALL,命令职责表与状态机命令限制照《01》十二-4;
 2. TF 离线升级:统一暂存流程(staging_prepare → 剥头复制 → 校验 → 生成 manifest → STAGED_VALID → 共用 INSTALL)+ 失败包 `.failed` 隔离 + 成功包 `.applied` 幂等改名(《01》十二-6/9);
-3. 双槽元数据(存 GD25Q40E 固定元数据槽 A/B:68B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽或外部 SPI 不可用时按 App/Backup manifest 恢复;《01》十二-10),槽地址随 M5 外部分区冻结;
+3. 双槽元数据(存 GD25Q40E 固定元数据槽 A/B:68B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽或外部 SPI 不可用时按 App/Backup manifest 恢复;《01》十二-10),槽地址由 M6 在本阶段先冻结;
 4. 启动确认:TRIAL_PENDING → APP 满足五条件写 CONFIRMED;IWDG/HardFault 失败计数 ≥3 回滚;crash_marker 统一消费(《01》十二-5/9);
 5. OLED 升级进度(0~90% 接收 / 90~100% 校验搬运)+ LED 状态/进度指示(裸机 1ms 时基,无软件 PWM;《01》十一-4/5/6);
 6. 跳转 App 10 步序列与 FWDGT 接管(《01》十二-8、十六-4)。

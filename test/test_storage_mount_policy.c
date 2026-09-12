@@ -41,6 +41,28 @@ static void test_write_retry_degrades_after_three_retries(void)
                             storage_mount_policy_write_retry_exhausted(4U));
 }
 
+/* 验证 TF 空间低于 5% 才进入卡满状态，正好 5% 仍可写。 */
+static void test_space_full_threshold(void)
+{
+    TEST_ASSERT_EQUAL_UINT8(1U,
+                            storage_mount_policy_space_full(4U, 100U));
+    TEST_ASSERT_EQUAL_UINT8(0U,
+                            storage_mount_policy_space_full(5U, 100U));
+    TEST_ASSERT_EQUAL_UINT8(0U,
+                            storage_mount_policy_space_full(6U, 100U));
+    TEST_ASSERT_EQUAL_UINT8(1U,
+                            storage_mount_policy_space_full(0U, 100U));
+}
+
+/* 无有效总簇数或空闲簇数越界时采用安全的卡满结果。 */
+static void test_space_full_invalid_geometry(void)
+{
+    TEST_ASSERT_EQUAL_UINT8(1U,
+                            storage_mount_policy_space_full(0U, 0U));
+    TEST_ASSERT_EQUAL_UINT8(1U,
+                            storage_mount_policy_space_full(101U, 100U));
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 int main(void)
@@ -50,5 +72,7 @@ int main(void)
     RUN_TEST(test_retry_guard_conditions);
     RUN_TEST(test_write_retry_backoff_schedule);
     RUN_TEST(test_write_retry_degrades_after_three_retries);
+    RUN_TEST(test_space_full_threshold);
+    RUN_TEST(test_space_full_invalid_geometry);
     return UNITY_END();
 }

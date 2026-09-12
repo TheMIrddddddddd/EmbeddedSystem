@@ -137,6 +137,7 @@ static FATFS s_storage_fatfs;
 static volatile FRESULT s_storage_fatfs_mount_result = FR_NOT_READY;
 static volatile uint8_t s_storage_fatfs_mounted;
 static volatile FRESULT s_storage_fatfs_unmount_result = FR_OK;
+static volatile uint8_t s_storage_fatfs_full;
 static uint8_t s_storage_fatfs_write_degraded;
 
 static TickType_t s_storage_card_insert_tick;
@@ -157,6 +158,7 @@ static int storage_task_audit_open(uint8_t write_boot_line);
 static void storage_task_record_setup_after_mount(uint8_t write_boot_line);
 static int storage_task_audit_write_boot_line(void);
 static void storage_task_process_alarm_rpc_request(void);
+static int storage_task_fatfs_space_refresh(void);
 static void storage_task_fatfs_mark_degraded(void);
 static int storage_task_fatfs_recover_for_retry(
     uint8_t retry_index, storage_record_file_t *preserve_state);
@@ -194,12 +196,46 @@ static void storage_sdio_initialize(void)
     }
 }
 
+/* 读取当前卷的空闲簇比例；空间未知时不擅自判定为卡满。 */
+static int storage_task_fatfs_space_refresh(void)
+{
+    DWORD free_clusters;
+    DWORD total_clusters;
+    FATFS *fatfs;
+    FRESULT result;
+
+    if (s_storage_fatfs_mounted == 0U)
+    {
+        s_storage_fatfs_full = 0U;
+        return 0;
+    }
+
+    free_clusters = 0U;
+    total_clusters = 0U;
+    fatfs = NULL;
+    result = f_getfree("0:", &free_clusters, &fatfs);
+
+    if ((result != FR_OK) || (fatfs == NULL) ||
+        (fatfs->n_fatent <= 2U))
+    {
+        return 0;
+    }
+
+    total_clusters = fatfs->n_fatent - 2U;
+    s_storage_fatfs_full = storage_mount_policy_space_full(
+        (uint32_t)free_clusters,
+        (uint32_t)total_clusters);
+
+    return 1;
+}
+
 static void storage_fatfs_mount(void)
 {
     uint8_t attempt;
 
     s_storage_fatfs_mounted = 0U;
     s_storage_fatfs_mount_result = FR_NOT_READY;
+    s_storage_fatfs_full = 0U;
 
     if (s_storage_task_sdio_diag.state != STORAGE_TASK_SDIO_STATE_READY)
     {
@@ -213,11 +249,12 @@ static void storage_fatfs_mount(void)
         if (s_storage_fatfs_mount_result == FR_OK)
         {
             s_storage_fatfs_mounted = 1U;
+            (void)storage_task_fatfs_space_refresh();
             break;
         }
 
         /*
-         * SDIO 初始化后的首次 DMA 读偶发 FEE：重新识别卡并立即重挂一次，
+         * 文件系统初始化后的首次底层读偶发失败：重新识别卡并立即重挂一次，
          * 不把瞬态错误暴露给系统自检或 Q-02。
          */
         if ((s_storage_fatfs_mount_result != FR_DISK_ERR) ||
@@ -242,6 +279,7 @@ static void storage_task_fatfs_unmount(void)
     storage_task_record_files_close();
     s_storage_fatfs_mounted = 0U;
     s_storage_fatfs_mount_result = FR_NOT_READY;
+    s_storage_fatfs_full = 0U;
     diskio_sdio_set_not_ready();
     s_storage_fatfs_unmount_result = f_mount(NULL, "0:", 0U);
 }
@@ -301,9 +339,24 @@ static int storage_task_fatfs_recover_for_retry(
     }
 
     storage_fatfs_mount();
-    if ((s_storage_fatfs_mounted == 0U) ||
-        (storage_task_record_directories_prepare() == 0))
+    if (s_storage_fatfs_mounted == 0U)
     {
+        return 0;
+    }
+
+    (void)storage_task_fatfs_space_refresh();
+    if (s_storage_fatfs_full != 0U)
+    {
+        return 0;
+    }
+
+    if (storage_task_record_directories_prepare() == 0)
+    {
+        if (s_storage_fatfs_full != 0U)
+        {
+            return 0;
+        }
+
         storage_task_fatfs_unmount();
         return 0;
     }
@@ -342,6 +395,7 @@ static void storage_card_remove_process(void)
     s_storage_task_sdio_diag.state = STORAGE_TASK_SDIO_STATE_NO_CARD;
     s_storage_task_sdio_diag.last_status = (uint32_t)BOARD_SDIO_STATUS_NO_CARD;
     s_storage_task_sdio_diag.busy = 0U;
+    s_storage_fatfs_full = 0U;
     s_storage_fatfs_write_degraded = 0U;
 }
 
@@ -744,6 +798,11 @@ static int storage_task_record_file_open_retry(storage_record_file_t *state)
 
     for (;;)
     {
+        if (s_storage_fatfs_full != 0U)
+        {
+            return 0;
+        }
+
         if (s_storage_fatfs_write_degraded != 0U)
         {
             return 0;
@@ -757,6 +816,12 @@ static int storage_task_record_file_open_retry(storage_record_file_t *state)
             {
                 state->open = 1U;
                 return 1;
+            }
+
+            (void)storage_task_fatfs_space_refresh();
+            if (s_storage_fatfs_full != 0U)
+            {
+                return 0;
             }
         }
 
@@ -827,6 +892,15 @@ static int storage_task_record_write_line(storage_record_file_t *state,
 
     for (;;)
     {
+        if (s_storage_fatfs_mounted != 0U)
+        {
+            (void)storage_task_fatfs_space_refresh();
+            if (s_storage_fatfs_full != 0U)
+            {
+                return 0;
+            }
+        }
+
         if (s_storage_fatfs_write_degraded != 0U)
         {
             return 0;
@@ -866,6 +940,7 @@ static int storage_task_record_write_line(storage_record_file_t *state,
 
         if ((result == FR_OK) && (transferred == length))
         {
+            (void)storage_task_fatfs_space_refresh();
             state->row_count = (count_row != 0U) ?
                                (uint8_t)(preserved_row_count + 1U) :
                                preserved_row_count;
@@ -880,6 +955,12 @@ attempt_failed:
             state->open = 0U;
         }
         state->row_count = preserved_row_count;
+
+        (void)storage_task_fatfs_space_refresh();
+        if (s_storage_fatfs_full != 0U)
+        {
+            return 0;
+        }
 
         if (storage_mount_policy_write_retry_exhausted(retry_count) != 0U)
         {
@@ -928,6 +1009,16 @@ static int storage_task_file_write_with_retry(
         UINT current_transferred = 0U;
         uint8_t file_open = 0U;
 
+        if (s_storage_fatfs_mounted != 0U)
+        {
+            (void)storage_task_fatfs_space_refresh();
+            if (s_storage_fatfs_full != 0U)
+            {
+                *result = FR_DENIED;
+                return 0;
+            }
+        }
+
         if (s_storage_fatfs_write_degraded != 0U)
         {
             *result = FR_NOT_READY;
@@ -969,6 +1060,7 @@ static int storage_task_file_write_with_retry(
             if ((operation_result == FR_OK) &&
                 (current_transferred == (UINT)request->length))
             {
+                (void)storage_task_fatfs_space_refresh();
                 close_result = f_close(&file);
                 file_open = 0U;
                 if (close_result == FR_OK)
@@ -994,6 +1086,13 @@ static int storage_task_file_write_with_retry(
 
         *result = operation_result;
         *transferred = current_transferred;
+
+        (void)storage_task_fatfs_space_refresh();
+        if (s_storage_fatfs_full != 0U)
+        {
+            *result = FR_DENIED;
+            return 0;
+        }
 
         if (storage_mount_policy_write_retry_exhausted(retry_count) != 0U)
         {
@@ -1047,10 +1146,21 @@ static void storage_task_record_setup_after_mount(uint8_t write_boot_line)
         return;
     }
 
+    if ((storage_task_fatfs_space_refresh() != 0) &&
+        (s_storage_fatfs_full != 0U))
+    {
+        return;
+    }
+
     if ((storage_task_record_directories_prepare() == 0) ||
         ((s_storage_audit_boot_count != 0U) &&
          (storage_task_audit_open(write_boot_line) == 0)))
     {
+        if (s_storage_fatfs_full != 0U)
+        {
+            return;
+        }
+
         storage_task_record_files_close();
         s_storage_fatfs_mounted = 0U;
         s_storage_fatfs_mount_result = FR_DISK_ERR;
@@ -1189,6 +1299,8 @@ static void storage_task_write_sample_record(const storage_task_record_request_t
     board_rtc_time_t time;
     uint16_t length = 0U;
     if ((request == 0) || (s_storage_fatfs_mounted == 0U) ||
+        ((storage_task_fatfs_space_refresh() != 0) &&
+         (s_storage_fatfs_full != 0U)) ||
         (board_rtc_time_get(&time) == 0)) return;
     if (s_storage_sample_file.row_count >= STORAGE_RECORD_MAX_ROWS)
         storage_task_record_file_close(&s_storage_sample_file);
@@ -1224,7 +1336,9 @@ static void storage_task_write_alarm_record(const storage_task_record_request_t 
     (void)storage_persistence_alarm_record_append(
         timestamp, request->channel, request->threshold, request->actual);
 
-    if ((s_storage_fatfs_mounted == 0U) || (rtc_ok == 0U)) return;
+    if ((s_storage_fatfs_mounted == 0U) || (rtc_ok == 0U) ||
+        ((storage_task_fatfs_space_refresh() != 0) &&
+         (s_storage_fatfs_full != 0U))) return;
 
     if (s_storage_alarm_file.row_count >= STORAGE_RECORD_MAX_ROWS)
         storage_task_record_file_close(&s_storage_alarm_file);
@@ -1242,7 +1356,9 @@ static void storage_task_write_audit_record(const storage_task_record_request_t 
 {
     board_rtc_time_t time;
     uint16_t length = 0U;
-    if ((request == 0) || (s_storage_fatfs_mounted == 0U)) return;
+    if ((request == 0) || (s_storage_fatfs_mounted == 0U) ||
+        ((storage_task_fatfs_space_refresh() != 0) &&
+         (s_storage_fatfs_full != 0U))) return;
     if (s_storage_audit_file.open == 0U && storage_task_audit_open(0U) == 0) return;
     if ((board_rtc_time_get(&time) == 0) ||
         (storage_task_format_audit_event(request, &time, &length) == 0)) return;
@@ -1668,6 +1784,7 @@ int storage_task_create(void)
 {
     s_storage_task_sdio_diag.state = STORAGE_TASK_SDIO_STATE_NOT_STARTED;
     s_storage_audit_boot_written = 0U;
+    s_storage_fatfs_full = 0U;
     s_storage_fatfs_write_degraded = 0U;
 
     s_storage_request_queue_handle = xQueueCreateStatic(
@@ -2068,4 +2185,15 @@ uint8_t storage_task_fatfs_mounted_get(void)
 uint32_t storage_task_fatfs_mount_result_get(void)
 {
     return (uint32_t)s_storage_fatfs_mount_result;
+}
+
+uint8_t storage_task_fatfs_full_get(void)
+{
+    return (s_storage_fatfs_full != 0U) ? 1U : 0U;
+}
+
+uint8_t storage_task_fatfs_storage_enabled_get(void)
+{
+    return ((s_storage_fatfs_mounted != 0U) &&
+            (s_storage_fatfs_full == 0U)) ? 1U : 0U;
 }

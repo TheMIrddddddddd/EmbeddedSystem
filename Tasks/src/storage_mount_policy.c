@@ -30,3 +30,23 @@ uint8_t storage_mount_policy_write_retry_exhausted(uint8_t retry_count)
 {
     return (retry_count >= STORAGE_WRITE_RETRY_COUNT) ? 1U : 0U;
 }
+
+/* 剩余簇数严格低于总簇数的 5% 时判定为卡满。 */
+uint8_t storage_mount_policy_space_full(uint32_t free_clusters,
+                                        uint32_t total_clusters)
+{
+    uint64_t free_percent_scaled;
+    uint64_t threshold_percent_scaled;
+
+    if ((total_clusters == 0U) || (free_clusters > total_clusters))
+    {
+        return 1U;
+    }
+
+    free_percent_scaled = (uint64_t)free_clusters * 100ULL;
+    threshold_percent_scaled =
+        (uint64_t)total_clusters *
+        (uint64_t)STORAGE_FATFS_FULL_THRESHOLD_PERCENT;
+
+    return (free_percent_scaled < threshold_percent_scaled) ? 1U : 0U;
+}
