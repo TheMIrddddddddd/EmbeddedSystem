@@ -880,6 +880,11 @@
               <FilePath>..\Tasks\src\storage_record_format.c</FilePath>
             </File>
             <File>
+              <FileName>storage_mount_policy.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\storage_mount_policy.c</FilePath>
+            </File>
+            <File>
               <FileName>app_task.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Tasks\src\app_task.c</FilePath>

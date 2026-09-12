@@ -17,6 +17,7 @@
 #include "app_config_import.h"
 #include "app_config_ini.h"
 #include "storage_record_format.h"
+#include "storage_mount_policy.h"
 
 #define STORAGE_TASK_PRIORITY              3U
 #define STORAGE_TASK_STACK_DEPTH           512U
@@ -228,6 +229,13 @@ static void storage_card_insert_process(void)
         return;
     }
     storage_fatfs_mount();
+    if (storage_mount_policy_retry(
+            (board_sdio_card_present() != 0U) ? 1U : 0U,
+            s_storage_fatfs_mounted,
+            s_storage_card_insert_attempted) != 0U)
+    {
+        s_storage_card_insert_attempted = 0U;
+    }
     if (s_storage_fatfs_mounted != 0U)
     {
         (void)storage_task_record_directories_prepare();
@@ -1011,14 +1019,20 @@ static void storage_task(void *argument)
     storage_task_publish_config_load();
     storage_sdio_initialize();
     storage_fatfs_mount();
+    s_storage_card_insert_attempted =
+        (board_sdio_card_present() != 0U) ? 1U : 0U;
+    if (storage_mount_policy_retry(
+            (board_sdio_card_present() != 0U) ? 1U : 0U,
+            s_storage_fatfs_mounted,
+            s_storage_card_insert_attempted) != 0U)
+    {
+        s_storage_card_insert_attempted = 0U;
+    }
     if (s_storage_fatfs_mounted != 0U)
     {
         (void)storage_task_record_directories_prepare();
         (void)storage_task_audit_open(1U);
     }
-
-    s_storage_card_insert_attempted =
-        (board_sdio_card_present() != 0U) ? 1U : 0U;
 
     for (;;)
     {

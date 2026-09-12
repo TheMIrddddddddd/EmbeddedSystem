@@ -135,6 +135,7 @@ virtualFolder:
         - path: ../Tasks/src/storage_persistence.c
         - path: ../Tasks/src/alarm_logic.c
         - path: ../Tasks/src/storage_record_format.c
+        - path: ../Tasks/src/storage_mount_policy.c
         - path: ../Tasks/src/app_task.c
         - path: ../Tasks/src/task_queues.c
         - path: ../Tasks/src/task_events.c
