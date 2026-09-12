@@ -1485,6 +1485,98 @@ void app_cli_storage_result_poll(void)
     }
 }
 
+/* 诊断命令（仅板级排障用）：绕过 StorageTask，直接对 GD25Q40E 状态
+ * 寄存器与 0x7F000 空白扇区做擦写回读，逐阶段输出结果。
+ * 扇区选在 KV 双扇区（0x0000/0x1000）之外，不与持久化数据重叠。
+ * 调用前须确保无未完成的存储请求。 */
+#define APP_CLI_FLASH_DIAG_ADDRESS 0x0007F000UL
+
+static cli_status_t app_cli_flashdiag(int argc, const char *argv[],
+                                      char *output, size_t output_size)
+{
+    uint8_t pattern[16];
+    uint8_t check[16];
+    uint8_t status;
+    uint8_t pass;
+    uint16_t index;
+
+    (void)argv;
+    (void)output;
+    (void)output_size;
+
+    if (argc != 1)
+    {
+        return CLI_STATUS_INVALID_ARGUMENTS;
+    }
+
+    status = board_spi_flash_read_status();
+    app_cli_print_current_hex4("flash status before : 0x", status);
+
+    /* WREN 后回读状态：WEL(bit1) 应置位，否则写被硬件拒绝。 */
+    pass = (uint8_t)board_spi_flash_write_enable();
+    status = board_spi_flash_read_status();
+    app_cli_print_current_hex4("flash status wren   : 0x", status);
+    (void)app_cli_print((pass != 0U) ?
+        "write enable        : [PASS]" : "write enable        : [FAIL]");
+
+    pass = (uint8_t)board_spi_flash_sector_erase(APP_CLI_FLASH_DIAG_ADDRESS);
+    (void)app_cli_print((pass != 0U) ?
+        "sector erase        : [PASS]" : "sector erase        : [FAIL]");
+
+    /* 擦除成功后整扇区内容应为 0xFF。 */
+    (void)memset(check, 0, sizeof(check));
+    pass = 0U;
+    if (board_spi_flash_read(APP_CLI_FLASH_DIAG_ADDRESS,
+                             check, sizeof(check)) != 0)
+    {
+        pass = 1U;
+        for (index = 0U; index < sizeof(check); index++)
+        {
+            if (check[index] != 0xFFU)
+            {
+                pass = 0U;
+                break;
+            }
+        }
+    }
+    (void)app_cli_print((pass != 0U) ?
+        "erase verify 0xFF   : [PASS]" : "erase verify 0xFF   : [FAIL]");
+
+    for (index = 0U; index < sizeof(pattern); index++)
+    {
+        pattern[index] = (uint8_t)(0xA5U ^ index);
+    }
+
+    pass = (uint8_t)board_spi_flash_page_program(APP_CLI_FLASH_DIAG_ADDRESS,
+                                                 pattern, sizeof(pattern));
+    (void)app_cli_print((pass != 0U) ?
+        "page program        : [PASS]" : "page program        : [FAIL]");
+
+    /* 读回与模板逐字节比对。 */
+    (void)memset(check, 0, sizeof(check));
+    pass = 0U;
+    if (board_spi_flash_read(APP_CLI_FLASH_DIAG_ADDRESS,
+                             check, sizeof(check)) != 0)
+    {
+        pass = 1U;
+        for (index = 0U; index < sizeof(pattern); index++)
+        {
+            if (check[index] != pattern[index])
+            {
+                pass = 0U;
+                break;
+            }
+        }
+    }
+    (void)app_cli_print((pass != 0U) ?
+        "program verify      : [PASS]" : "program verify      : [FAIL]");
+
+    status = board_spi_flash_read_status();
+    app_cli_print_current_hex4("flash status after  : 0x", status);
+
+    return CLI_STATUS_OK;
+}
+
 static const cli_command_t s_cli_commands[] =
 {
     { "help",    app_cli_help },
@@ -1501,7 +1593,8 @@ static const cli_command_t s_cli_commands[] =
     { "config",  app_cli_config },
     { "conf",    app_cli_conf },
     { "rtc",     app_cli_rtc },
-    { "test",    app_cli_test }
+    { "test",    app_cli_test },
+    { "flashdiag", app_cli_flashdiag }
 };
 
 #define APP_CLI_COMMAND_COUNT \

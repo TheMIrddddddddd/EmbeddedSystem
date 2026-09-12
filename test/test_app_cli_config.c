@@ -78,6 +78,42 @@ int board_spi_flash_read_jedec_id(uint8_t id[3])
     return 1;
 }
 
+uint8_t board_spi_flash_read_status(void)
+{
+    return 0U;
+}
+
+int board_spi_flash_write_enable(void)
+{
+    return 1;
+}
+
+int board_spi_flash_page_program(uint32_t address, const uint8_t *data,
+                                 uint32_t length)
+{
+    (void)address;
+    (void)data;
+    (void)length;
+    return 1;
+}
+
+int board_spi_flash_read(uint32_t address, uint8_t *data, uint32_t length)
+{
+    (void)address;
+    if (data == NULL)
+    {
+        return 0;
+    }
+    (void)memset(data, 0xFF, length);
+    return 1;
+}
+
+int board_spi_flash_sector_erase(uint32_t address)
+{
+    (void)address;
+    return 1;
+}
+
 int board_rtc_time_get(board_rtc_time_t *time)
 {
     if (time == NULL)
