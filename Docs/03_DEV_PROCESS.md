@@ -544,6 +544,10 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 - 审计日志行尾修复:`storage_task_format_audit_event()` 与 `boot #N` 行的写入长度由 `position - 1` 改为 `position`。修复前每条记录只写 `CR`、缺 `LF`(`boot_000085.log`:322 字节,8 CR / 0 LF);修复后 `boot_000087.log` 实测 11 CR / 11 LF,内容与串口一致。
 - 热拔在途写入:拔卡若发生在文件创建或记录写入过程中,可能留下 0 字节文件(`sample_20260101_053402.csv`);系统不死机、采样不停(拔卡后仍每 10s 输出采样行),重插后由挂载策略自动重试恢复。被打断写之后的首次挂载曾出现一次瞬态 `FatFsErr=1 / DMAerr=2 (FEE)`,自动重试后 `FatFs: Mounted [PASS]`。
 - 同一轮干净卡验证:`config.ini` 导入 [OK]、采样文件 `sample_20260101_053750.csv` 6 行 186 字节(6 CR / 6 LF)、告警文件 `alarm_20260101_052714.csv` 1 行 35 字节、重插后 Q-02 重挂载 [PASS];异常未再复现。
+- M5-5 最终板测闭环(2026-09-13):电脑侧确认 TF 卷为 MBR + exFAT,初始状态为 `Dirty / Full Repair Needed`,且 `audit` 目录不可读;执行 `chkdsk G: /f` 后卷恢复为 `Healthy / OK`,dirty 标志清除,`audit` 目录恢复可读,坏扇区为 0 KB。
+- DMA 写启动时序修正: `board_sdio_write_block_dma_polling()` 按 `CMD24 → 数据状态机 → 配置并使能 DMA 通道 → 打开 SDIO DMA 请求` 启动,避免 SDIO 请求早于 DMA 通道就绪而触发 `FEE`。Keil AC5 重构建 `0 error / 0 warning`。
+- 修正后板测:上电自动挂载 [PASS];实际告警 `f_open/f_write/f_sync` 写入后 `0x0701=01` 保持;TF 卡拔出并重新插入后 COM9 自检、FatFs 重挂载和 `0x0701=01` 均 [PASS];重插后再次告警写入通过,Flash 告警记录由 6 条增至 7 条,采样查询持续正常。
+- 当前板测遗留状态:设备中的告警记录为测试数据,未清除;CH0/CH1 当前运行阈值为 `3.00 / 12.50`,生产阈值尚待确认,不能直接作为出厂配置。
 
 ---
 

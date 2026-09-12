@@ -262,6 +262,9 @@ static void board_sdio_dma_write_config(const uint8_t *buffer)
         BOARD_SDIO_DMA_CHANNEL,
         DMA_INT_FTF);
 
+    dma_channel_enable(
+        BOARD_SDIO_DMA_PERIPH,
+        BOARD_SDIO_DMA_CHANNEL);
 }
 
 static void board_sdio_dma_async_interrupt_enable(void)
@@ -1395,8 +1398,6 @@ board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number,con
 
     board_sdio_data_cleanup();
 
-    board_sdio_dma_write_config(buffer);
-
     response = 0;
 
     status = board_sdio_command(24U, block_number, SDIO_RESPONSETYPE_SHORT, &response);
@@ -1424,18 +1425,15 @@ board_sdio_status_t board_sdio_write_block_dma_polling(uint32_t block_number,con
     sdio_data_config(0xFFFFFFFFU, BOARD_SDIO_BLOCK_SIZE, SDIO_DATABLOCKSIZE_512BYTES);
 
     sdio_data_transfer_config(SDIO_TRANSMODE_BLOCK, SDIO_TRANSDIRECTION_TOCARD);
-    
-    sdio_dma_enable();
-
     sdio_dsm_enable();
 
     /*
-     * CMD24 已经返回，且 SDIO 数据状态机和 DMA 请求均已打开，
-     * 此时再使能 DMA 通道，避免提前填充发送 FIFO。
+     * 对齐 GD32 SDIO DMA 示例的启动顺序：
+     * 数据状态机先就绪，随后配置并使能 DMA 通道，
+     * 最后打开 SDIO DMA 请求，避免启动阶段产生 FEE。
      */
-    dma_channel_enable(
-        BOARD_SDIO_DMA_PERIPH,
-        BOARD_SDIO_DMA_CHANNEL);
+    board_sdio_dma_write_config(buffer);
+    sdio_dma_enable();
 
     timeout = BOARD_SDIO_DATA_POLL_TIMEOUT;
 

@@ -137,6 +137,7 @@ static FATFS s_storage_fatfs;
 static volatile FRESULT s_storage_fatfs_mount_result = FR_NOT_READY;
 static volatile uint8_t s_storage_fatfs_mounted;
 static volatile FRESULT s_storage_fatfs_unmount_result = FR_OK;
+static uint8_t s_storage_fatfs_write_degraded;
 
 static TickType_t s_storage_card_insert_tick;
 static uint8_t s_storage_card_insert_pending;
@@ -156,6 +157,14 @@ static int storage_task_audit_open(uint8_t write_boot_line);
 static void storage_task_record_setup_after_mount(uint8_t write_boot_line);
 static int storage_task_audit_write_boot_line(void);
 static void storage_task_process_alarm_rpc_request(void);
+static void storage_task_fatfs_mark_degraded(void);
+static int storage_task_fatfs_recover_for_retry(
+    uint8_t retry_index, storage_record_file_t *preserve_state);
+static int storage_task_record_file_open_retry(storage_record_file_t *state);
+static int storage_task_file_write_with_retry(
+    const storage_task_file_request_t *request,
+    FRESULT *result,
+    UINT *transferred);
 
 static void storage_sdio_initialize(void)
 {
@@ -228,6 +237,85 @@ static void storage_fatfs_mount(void)
     }
 }
 
+static void storage_task_fatfs_unmount(void)
+{
+    storage_task_record_files_close();
+    s_storage_fatfs_mounted = 0U;
+    s_storage_fatfs_mount_result = FR_NOT_READY;
+    diskio_sdio_set_not_ready();
+    s_storage_fatfs_unmount_result = f_mount(NULL, "0:", 0U);
+}
+
+static void storage_task_fatfs_mark_degraded(void)
+{
+    storage_task_fatfs_unmount();
+    s_storage_fatfs_mount_result = FR_DISK_ERR;
+    s_storage_task_sdio_diag.state = STORAGE_TASK_SDIO_STATE_DEGRADED;
+    s_storage_task_sdio_diag.last_status =
+        (uint32_t)BOARD_SDIO_STATUS_NOT_READY;
+    s_storage_task_sdio_diag.busy = 0U;
+    s_storage_fatfs_write_degraded = 1U;
+}
+
+/* 每次重试重新挂载一次，恢复成功后由调用者重新打开目标文件。 */
+static int storage_task_fatfs_recover_for_retry(
+    uint8_t retry_index, storage_record_file_t *preserve_state)
+{
+    uint8_t row_count = 0U;
+    uint32_t delay_ms;
+
+    if (s_storage_fatfs_write_degraded != 0U)
+    {
+        return 0;
+    }
+
+    if (preserve_state != NULL)
+    {
+        row_count = preserve_state->row_count;
+    }
+
+    delay_ms = storage_mount_policy_write_retry_delay_ms(retry_index);
+    if (delay_ms == 0U)
+    {
+        return 0;
+    }
+
+    storage_task_fatfs_unmount();
+
+    if (board_sdio_card_present() == 0U)
+    {
+        return 0;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+
+    if (board_sdio_card_present() == 0U)
+    {
+        return 0;
+    }
+
+    storage_sdio_initialize();
+    if (s_storage_task_sdio_diag.state != STORAGE_TASK_SDIO_STATE_READY)
+    {
+        return 0;
+    }
+
+    storage_fatfs_mount();
+    if ((s_storage_fatfs_mounted == 0U) ||
+        (storage_task_record_directories_prepare() == 0))
+    {
+        storage_task_fatfs_unmount();
+        return 0;
+    }
+
+    if (preserve_state != NULL)
+    {
+        preserve_state->row_count = row_count;
+    }
+
+    return 1;
+}
+
 static void storage_card_remove_process(void)
 {
     if (board_sdio_card_present() != 0U)
@@ -254,6 +342,7 @@ static void storage_card_remove_process(void)
     s_storage_task_sdio_diag.state = STORAGE_TASK_SDIO_STATE_NO_CARD;
     s_storage_task_sdio_diag.last_status = (uint32_t)BOARD_SDIO_STATUS_NO_CARD;
     s_storage_task_sdio_diag.busy = 0U;
+    s_storage_fatfs_write_degraded = 0U;
 }
 
 static void storage_card_insert_process(void)
@@ -265,6 +354,12 @@ static void storage_card_insert_process(void)
     {
         s_storage_card_insert_pending = 0U;
         s_storage_card_insert_attempted = 0U;
+        return;
+    }
+
+    /* 写失败降级保持到一次真实拔卡，避免卡仍在位时循环重挂载。 */
+    if (s_storage_fatfs_write_degraded != 0U)
+    {
         return;
     }
 
@@ -637,29 +732,68 @@ static int storage_task_count_file_rows(const char *path, uint8_t *count)
     return 1;
 }
 
+static int storage_task_record_file_open_retry(storage_record_file_t *state)
+{
+    uint8_t retry_count = 0U;
+    FRESULT result;
+
+    if ((state == NULL) || (state->path[0] == '\0'))
+    {
+        return 0;
+    }
+
+    for (;;)
+    {
+        if (s_storage_fatfs_write_degraded != 0U)
+        {
+            return 0;
+        }
+
+        if (s_storage_fatfs_mounted != 0U)
+        {
+            result = f_open(&state->file, state->path,
+                            FA_OPEN_APPEND | FA_WRITE);
+            if (result == FR_OK)
+            {
+                state->open = 1U;
+                return 1;
+            }
+        }
+
+        if (storage_mount_policy_write_retry_exhausted(retry_count) != 0U)
+        {
+            break;
+        }
+
+        (void)storage_task_fatfs_recover_for_retry(retry_count, state);
+        retry_count++;
+    }
+
+    storage_task_fatfs_mark_degraded();
+    return 0;
+}
+
 /* 打开一个可滚动 CSV 文件；已有未满文件从原记录数继续追加。 */
 static int storage_task_roll_file_open(storage_record_file_t *state,
                                        const char *directory, const char *prefix,
                                        const board_rtc_time_t *time)
 {
     uint8_t rows = 0U;
-    FRESULT result;
     if ((state == 0) || (directory == 0) || (prefix == 0) || (time == 0)) return 0;
     if (state->open != 0U) return (state->row_count < STORAGE_RECORD_MAX_ROWS) ? 1 : 0;
     if (storage_task_build_time_path(directory, prefix, time,
                                      state->path, sizeof(state->path)) == 0) return 0;
-    result = f_open(&state->file, state->path, FA_OPEN_APPEND | FA_WRITE);
-    if (result != FR_OK) return 0;
+    if (storage_task_record_file_open_retry(state) == 0) return 0;
     if (f_size(&state->file) != 0U)
     {
         (void)f_close(&state->file);
+        state->open = 0U;
         if ((storage_task_count_file_rows(state->path, &rows) == 0) ||
             (rows >= STORAGE_RECORD_MAX_ROWS))
         {
             return 0;
         }
-        result = f_open(&state->file, state->path, FA_OPEN_APPEND | FA_WRITE);
-        if (result != FR_OK) return 0;
+        if (storage_task_record_file_open_retry(state) == 0) return 0;
     }
     state->row_count = rows;
     state->open = 1U;
@@ -667,24 +801,211 @@ static int storage_task_roll_file_open(storage_record_file_t *state,
 }
 
 /* 写入一行并强制 f_sync；失败时关闭当前文件，避免继续使用坏句柄。 */
+static void storage_task_record_write_rollback(
+    storage_record_file_t *state, FSIZE_t original_size)
+{
+    if ((state != NULL) && (state->open != 0U) &&
+        (f_lseek(&state->file, original_size) == FR_OK))
+    {
+        (void)f_truncate(&state->file);
+    }
+}
+
 static int storage_task_record_write_line(storage_record_file_t *state,
                                           const char *line, uint16_t length,
                                           uint8_t count_row)
 {
+    uint8_t retry_count = 0U;
+    uint8_t preserved_row_count;
+    FSIZE_t original_size = 0U;
     UINT transferred;
     FRESULT result;
-    if ((state == 0) || (state->open == 0U) || (line == 0) || (length == 0U)) return 0;
-    result = f_write(&state->file, line, length, &transferred);
-    if ((result != FR_OK) || (transferred != length) ||
-        (f_sync(&state->file) != FR_OK))
+
+    if ((state == 0) || (line == 0) || (length == 0U)) return 0;
+
+    preserved_row_count = state->row_count;
+
+    for (;;)
     {
-        (void)f_close(&state->file);
-        state->open = 0U;
-        state->row_count = 0U;
+        if (s_storage_fatfs_write_degraded != 0U)
+        {
+            return 0;
+        }
+
+        if (s_storage_fatfs_mounted == 0U)
+        {
+            if (storage_mount_policy_write_retry_exhausted(retry_count) != 0U)
+            {
+                break;
+            }
+
+            (void)storage_task_fatfs_recover_for_retry(retry_count, state);
+            retry_count++;
+            continue;
+        }
+
+        if (state->open == 0U)
+        {
+            result = f_open(&state->file, state->path,
+                            FA_OPEN_APPEND | FA_WRITE);
+            if (result != FR_OK)
+            {
+                goto attempt_failed;
+            }
+            state->open = 1U;
+        }
+
+        original_size = f_size(&state->file);
+        transferred = 0U;
+        result = f_write(&state->file, line, length, &transferred);
+
+        if ((result == FR_OK) && (transferred == length))
+        {
+            result = f_sync(&state->file);
+        }
+
+        if ((result == FR_OK) && (transferred == length))
+        {
+            state->row_count = (count_row != 0U) ?
+                               (uint8_t)(preserved_row_count + 1U) :
+                               preserved_row_count;
+            return 1;
+        }
+
+attempt_failed:
+        if (state->open != 0U)
+        {
+            storage_task_record_write_rollback(state, original_size);
+            (void)f_close(&state->file);
+            state->open = 0U;
+        }
+        state->row_count = preserved_row_count;
+
+        if (storage_mount_policy_write_retry_exhausted(retry_count) != 0U)
+        {
+            break;
+        }
+
+        (void)storage_task_fatfs_recover_for_retry(retry_count, state);
+        retry_count++;
+    }
+
+    storage_task_fatfs_mark_degraded();
+    return 0;
+}
+
+static void storage_task_file_write_rollback(FIL *file,
+                                             FSIZE_t original_size)
+{
+    if ((file != NULL) && (f_lseek(file, original_size) == FR_OK))
+    {
+        (void)f_truncate(file);
+    }
+}
+
+/* 通用 TF 文件写请求也遵循同一套 f_open/f_write/f_sync 重试策略。 */
+static int storage_task_file_write_with_retry(
+    const storage_task_file_request_t *request,
+    FRESULT *result,
+    UINT *transferred)
+{
+    uint8_t retry_count = 0U;
+    FRESULT operation_result;
+
+    if ((request == NULL) || (result == NULL) || (transferred == NULL))
+    {
         return 0;
     }
-    if (count_row != 0U) state->row_count++;
-    return 1;
+
+    *result = FR_INVALID_PARAMETER;
+    *transferred = 0U;
+
+    for (;;)
+    {
+        FIL file;
+        FRESULT close_result;
+        FSIZE_t original_size = 0U;
+        UINT current_transferred = 0U;
+        uint8_t file_open = 0U;
+
+        if (s_storage_fatfs_write_degraded != 0U)
+        {
+            *result = FR_NOT_READY;
+            break;
+        }
+
+        if (s_storage_fatfs_mounted == 0U)
+        {
+            if (storage_mount_policy_write_retry_exhausted(retry_count) != 0U)
+            {
+                *result = FR_NOT_READY;
+                break;
+            }
+
+            (void)storage_task_fatfs_recover_for_retry(retry_count, NULL);
+            retry_count++;
+            continue;
+        }
+
+        operation_result = f_open(&file, request->path,
+                                  (request->operation ==
+                                   STORAGE_TASK_FILE_APPEND) ?
+                                  (FA_OPEN_APPEND | FA_WRITE) :
+                                  (FA_CREATE_ALWAYS | FA_WRITE));
+        if (operation_result == FR_OK)
+        {
+            file_open = 1U;
+            original_size = f_size(&file);
+            operation_result = f_write(&file, request->buffer,
+                                       (UINT)request->length,
+                                       &current_transferred);
+
+            if ((operation_result == FR_OK) &&
+                (current_transferred == (UINT)request->length))
+            {
+                operation_result = f_sync(&file);
+            }
+
+            if ((operation_result == FR_OK) &&
+                (current_transferred == (UINT)request->length))
+            {
+                close_result = f_close(&file);
+                file_open = 0U;
+                if (close_result == FR_OK)
+                {
+                    *result = FR_OK;
+                    *transferred = current_transferred;
+                    return 1;
+                }
+                operation_result = close_result;
+            }
+            else
+            {
+                storage_task_file_write_rollback(&file, original_size);
+                (void)f_close(&file);
+                file_open = 0U;
+            }
+        }
+
+        if (file_open != 0U)
+        {
+            (void)f_close(&file);
+        }
+
+        *result = operation_result;
+        *transferred = current_transferred;
+
+        if (storage_mount_policy_write_retry_exhausted(retry_count) != 0U)
+        {
+            break;
+        }
+
+        (void)storage_task_fatfs_recover_for_retry(retry_count, NULL);
+        retry_count++;
+    }
+
+    storage_task_fatfs_mark_degraded();
+    return 0;
 }
 
 /* 关闭一个业务文件并同步；StorageTask 拔卡前统一调用。 */
@@ -839,7 +1160,6 @@ static int storage_task_audit_write_boot_line(void)
 static int storage_task_audit_open(uint8_t write_boot_line)
 {
     uint16_t position = 0U;
-    FRESULT result;
     if (s_storage_fatfs_mounted == 0U || s_storage_audit_boot_count == 0U) return 0;
     if (s_storage_audit_file.open != 0U)
     {
@@ -852,10 +1172,7 @@ static int storage_task_audit_open(uint8_t write_boot_line)
         (storage_task_text_fixed(s_storage_audit_file.path, sizeof(s_storage_audit_file.path), &position, s_storage_audit_boot_count, 6U) == 0) ||
         (storage_task_text_append(s_storage_audit_file.path, sizeof(s_storage_audit_file.path), &position, ".log") == 0) ||
         (storage_task_text_terminate(s_storage_audit_file.path, sizeof(s_storage_audit_file.path), &position) == 0)) return 0;
-    result = f_open(&s_storage_audit_file.file, s_storage_audit_file.path,
-                    FA_OPEN_APPEND | FA_WRITE);
-    if (result != FR_OK) return 0;
-    s_storage_audit_file.open = 1U;
+    if (storage_task_record_file_open_retry(&s_storage_audit_file) == 0) return 0;
     s_storage_audit_file.row_count = 0U;
     if ((write_boot_line != 0U) &&
         (storage_task_audit_write_boot_line() == 0))
@@ -1099,7 +1416,6 @@ static void storage_task_process_file_request(void)
     FRESULT result;
     FRESULT close_result;
     UINT transferred;
-    BYTE open_mode;
 
     if (s_storage_file_request_queue_handle == NULL)
     {
@@ -1123,41 +1439,9 @@ static void storage_task_process_file_request(void)
     {
     case STORAGE_TASK_FILE_WRITE:
     case STORAGE_TASK_FILE_APPEND:
-        if (request.operation == STORAGE_TASK_FILE_APPEND)
-        {
-            open_mode = FA_OPEN_APPEND | FA_WRITE;
-        }
-        else
-        {
-            open_mode = FA_CREATE_ALWAYS | FA_WRITE;
-        }
-
-        result = f_open(&file, request.path, open_mode);
-
-        if (result != FR_OK)
-        {
-            goto send_result;
-        }
-
-        result = f_write(&file, request.buffer, (UINT)request.length, &transferred);
-
-        if ((result == FR_OK) && (transferred != (UINT)request.length))
-        {
-            result = FR_DISK_ERR;
-        }
-
-        if (result == FR_OK)
-        {
-            result = f_sync(&file);
-        }
-
-        close_result = f_close(&file);
-
-        if (result == FR_OK)
-        {
-            result = close_result;
-        }
-
+        (void)storage_task_file_write_with_retry(&request,
+                                                 &result,
+                                                 &transferred);
         break;
 
     case STORAGE_TASK_FILE_READ:
@@ -1384,6 +1668,7 @@ int storage_task_create(void)
 {
     s_storage_task_sdio_diag.state = STORAGE_TASK_SDIO_STATE_NOT_STARTED;
     s_storage_audit_boot_written = 0U;
+    s_storage_fatfs_write_degraded = 0U;
 
     s_storage_request_queue_handle = xQueueCreateStatic(
         STORAGE_TASK_REQUEST_QUEUE_LENGTH,
