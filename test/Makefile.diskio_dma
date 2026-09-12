@@ -1,0 +1,16 @@
+CC := gcc
+CFLAGS := -std=c99 -Wall -Wextra -Werror -g -O0
+INCLUDES := -Idiskio_dma_stubs -I../Middleware/FatFs/inc -Iunity
+TARGET ?= /tmp/industrial_diskio_dma_test
+SOURCES := ../Middleware/FatFs/src/diskio.c \
+           unity/unity.c \
+           test_diskio_dma.c
+
+.PHONY: test clean
+
+test:
+	$(CC) $(CFLAGS) $(INCLUDES) $(SOURCES) -o $(TARGET)
+	$(TARGET)
+
+clean:
+	rm -f $(TARGET)

@@ -1,0 +1,9 @@
+CC := gcc
+CFLAGS := -std=c99 -Wall -Wextra -Werror -g -O0
+INCLUDES := -I../Tasks/inc -Iunity
+TARGET ?= /tmp/industrial_storage_mount_policy_test
+SOURCES := ../Tasks/src/storage_mount_policy.c unity/unity.c test_storage_mount_policy.c
+.PHONY: test
+test:
+	$(CC) $(CFLAGS) $(INCLUDES) $(SOURCES) -o $(TARGET)
+	$(TARGET)

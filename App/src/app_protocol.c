@@ -164,6 +164,18 @@ uint8_t app_protocol_auto_report_enabled(void)
     return s_auto_report_enabled;
 }
 
+uint8_t app_protocol_alarm_report_enabled(void)
+{
+    app_config_t config;
+
+    if (app_config_get(&config) == 0)
+    {
+        return 0U;
+    }
+
+    return (config.alarm_mode == APP_PROTOCOL_ALARM_MODE_ACTIVE) ? 1U : 0U;
+}
+
 uint8_t app_protocol_reboot_pending(void)
 {
     return s_reboot_pending;
@@ -238,6 +250,12 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
         {
             result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
         }
+        else
+        {
+            (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_DEVICE_ID_SET,
+                                                  0U, 0.0f, 0.0f,
+                                                  app_protocol_load_u16_be(payload));
+        }
         break;
 
     case APP_PROTOCOL_CMD_QUERY_BAUD:
@@ -265,6 +283,8 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
             {
                 result->next_baudrate = baudrate;
                 result->apply_flags |= PROTOCOL_RESULT_APPLY_BAUD;
+                (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_BAUDRATE_SET,
+                                                      0U, 0.0f, 0.0f, baudrate);
             }
         }
         break;
@@ -330,6 +350,13 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
             {
                 result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
             }
+            else
+            {
+                (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_LIMIT_SET,
+                                                      channel,
+                                                      app_protocol_load_float_be(payload),
+                                                      0.0f, 0U);
+            }
         }
         break;
 
@@ -352,6 +379,8 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
 
             /* 与 CLI 同款双写：配置模型留底，SampleTask 立即生效 */
             (void)sample_task_ratio_set(channel, ratio);
+            (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_RATIO_SET,
+                                                  channel, ratio, 0.0f, 0U);
         }
         break;
 
@@ -362,11 +391,8 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
         /* 1B：1=卡在位且已挂载，0=不可用 */
         result->payload[0] = 0U;
 
-        if (storage_task_sdio_diag_get(&diag) != 0)
-        {
-            result->payload[0] =
-                (diag.state == STORAGE_TASK_SDIO_STATE_READY) ? 1U : 0U;
-        }
+        (void)storage_task_sdio_diag_get(&diag);
+        result->payload[0] = storage_task_fatfs_mounted_get();
 
         result->payload_length = 1U;
         break;
@@ -388,10 +414,8 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
                           (jedec_id[2] == 0x13U)) ? 1U : 0U;
         }
 
-        if (storage_task_sdio_diag_get(&diag) != 0)
-        {
-            tf_pass = (diag.state == STORAGE_TASK_SDIO_STATE_READY) ? 1U : 0U;
-        }
+        (void)storage_task_sdio_diag_get(&diag);
+        tf_pass = storage_task_fatfs_mounted_get();
 
         /* 布局：[0]=OLED(启动已验证) [1]=Flash [2]=TF [3]=RTC */
         result->payload[0] = 1U;
@@ -453,8 +477,50 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
         }
         break;
 
-    /* 0x0381/0x0382 事件帧由 ProtocolTask 主动发送；0x03AA 归 M7；
-     * 0x05xx 归 M6；0x06xx/0x0702 归 M5——落到 default 按非法命令字处理 */
+    case APP_PROTOCOL_CMD_SET_ALARM_MODE:
+        if (payload_length != 1U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+
+        if (app_config_alarm_mode_set(payload[0]) == 0)
+        {
+            result->status = APP_PROTOCOL_ERROR_ILLEGAL_VALUE;
+        }
+        break;
+
+    case APP_PROTOCOL_CMD_QUERY_ALARM_RECORDS:
+        if (payload_length != 0U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+
+        if (storage_task_alarm_records_get(result->payload,
+                                           sizeof(result->payload),
+                                           &result->payload_length) == 0)
+        {
+            result->status = APP_PROTOCOL_ERROR_BUSY;
+            result->payload_length = 0U;
+        }
+        break;
+
+    case APP_PROTOCOL_CMD_CLEAR_ALARM_RECORDS:
+        if (payload_length != 0U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+
+        if (storage_task_alarm_records_clear() == 0)
+        {
+            result->status = APP_PROTOCOL_ERROR_BUSY;
+        }
+        break;
+
+    /* 0x0381/0x0382/0x0681 事件帧由 ProtocolTask 主动发送；0x03AA 归 M7；
+     * 0x05xx 归 M6；0x0702 归 M5——落到 default 按非法命令字处理 */
     default:
         result->status = APP_PROTOCOL_ERROR_ILLEGAL_COMMAND;
         result->payload_length = 0U;

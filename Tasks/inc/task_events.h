@@ -5,6 +5,7 @@
 #include "event_groups.h"
 
 #define TASK_EVENT_SYSTEM_READY         (1U << 0)
+#define TASK_EVENT_CONFIG_READY         (1U << 1)
 
 int task_events_init(void);
 

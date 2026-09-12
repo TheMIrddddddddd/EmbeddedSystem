@@ -10,6 +10,7 @@
 #include "app_modbus.h"
 #include "storage_task.h"
 #include "sample_task.h"
+#include "task_events.h"
 #include "board_usart.h"
 #include "board_gpio.h"
 #include "board_rtc.h"
@@ -18,9 +19,6 @@
 
 #define CONTROL_TASK_PRIORITY          3U
 #define CONTROL_TASK_STACK_DEPTH       256U
-
-/* 《01》四-4：超限指示灯 LED3 */
-#define CONTROL_LED_OVER_LIMIT         3U
 
 #define CLI_ECHO_ENABLE                1U
 
@@ -39,6 +37,7 @@ static StackType_t  s_control_task_stack[CONTROL_TASK_STACK_DEPTH];
 
 static volatile uint32_t s_control_task_heartbeat;
 static volatile uint32_t s_control_task_stack_high_water_mark;
+static uint8_t s_control_task_tf_full_reported;
 
 /*
  * 行缓冲放静态区而不放栈上：129B 加上 cli_execute_line 内部
@@ -261,12 +260,12 @@ static void control_print_sample_line(const app_config_t *config)
         }
     }
 
-    board_led_set(CONTROL_LED_OVER_LIMIT, (uint8_t)(((ch0_over != 0U) || (ch1_over != 0U)) ? 1U : 0U));
-
     s_sample_line_buffer[pos] = '\r';
     s_sample_line_buffer[pos + 1U] = '\n';
 
     (void)app_cli_write(s_sample_line_buffer, (uint16_t)(pos + 2U));
+    (void)storage_task_sample_record_submit(snapshot.value_ch0,
+                                            snapshot.value_ch1);
 }
 
 static void control_execute_modbus_request(
@@ -365,27 +364,85 @@ static void control_execute_protocol_request(
     }
 }
 
+int control_apply_persisted_config(
+    const storage_task_persist_result_t *result)
+{
+    app_config_t config;
+
+    if ((result == NULL) ||
+        (result->status != STORAGE_TASK_PERSIST_STATUS_OK) ||
+        (result->payload_length != APP_CONFIG_SERIALIZED_SIZE))
+    {
+        return 0U;
+    }
+
+    if (app_config_decode(result->payload,
+                          result->payload_length,
+                          &config) == 0)
+    {
+        return 0U;
+    }
+
+    if (app_config_apply(&config) == 0)
+    {
+        return 0U;
+    }
+
+    if ((sample_task_ratio_set(0U, config.ratio[0]) == 0) ||
+        (sample_task_ratio_set(1U, config.ratio[1]) == 0))
+    {
+        return 0U;
+    }
+
+    return 1U;
+}
+
 static void control_task(void *argument)
 {
     key_event_t key_event;
     app_config_t config;
+    storage_task_persist_result_t persist_result;
     /* ControlTask 独占，静态存放扩容后的队列对象。 */
     static protocol_request_t protocol_request;
     static protocol_result_t protocol_result;
     uint8_t sample_was_enabled = 0U;
+    uint8_t config_ready = 0U;
     TickType_t last_print_tick = 0U;
     uint8_t byte;
 
     (void)argument;
 
-    app_cli_banner_print();
-
     for(;;)
     {
+        if (config_ready == 0U)
+        {
+            if ((storage_task_persist_result_get(&persist_result, 0U) != 0) &&
+                (persist_result.request_id == 0U) &&
+                (persist_result.operation == STORAGE_TASK_PERSIST_CONFIG_LOAD))
+            {
+                /* Flash 无有效配置时保留 main() 已建立的默认值。 */
+                (void)control_apply_persisted_config(&persist_result);
+                (void)xEventGroupSetBits(task_events_get(),
+                                         TASK_EVENT_CONFIG_READY);
+                config_ready = 1U;
+                app_cli_banner_print();
+            }
+            else
+            {
+                s_control_task_stack_high_water_mark =
+                    (uint32_t)uxTaskGetStackHighWaterMark2(NULL);
+                s_control_task_heartbeat++;
+                vTaskDelay(pdMS_TO_TICKS(10U));
+                continue;
+            }
+        }
+
         while (board_usart0_try_receive_byte(&byte) != 0U)
         {
             cli_line_process_byte(byte);
         }
+
+        app_cli_storage_result_poll();
 
         (void)app_config_get(&config);
 
@@ -404,8 +461,7 @@ static void control_task(void *argument)
         }
         else if (sample_was_enabled != 0U)
         {
-            /* 停止采样时熄灭超限灯 */
-            board_led_set(CONTROL_LED_OVER_LIMIT, 0U);
+            /* AlarmTask 独占 LED3，停止本地打印不改变告警状态。 */
         }
 
         sample_was_enabled = config.local_sample_enabled;
@@ -415,8 +471,12 @@ static void control_task(void *argument)
             /* 《01》四-2：KEY1 按下翻转采样 */
             if ((key_event.key_id == 1U) && (key_event.event == (uint8_t)EBTN_EVT_ONPRESS))
             {
-                (void)app_config_sample_enable_set(
-                    (config.local_sample_enabled != 0U) ? 0U : 1U);
+                uint8_t enabled = (config.local_sample_enabled != 0U) ? 0U : 1U;
+                (void)app_config_sample_enable_set(enabled);
+                (void)storage_task_audit_event_submit(
+                    (enabled != 0U) ? STORAGE_TASK_AUDIT_SAMPLE_START :
+                                      STORAGE_TASK_AUDIT_SAMPLE_STOP,
+                    0U, 0.0f, 0.0f, 0U);
             }
             else if ((key_event.event == (uint8_t)EBTN_EVT_ONPRESS) &&
                      (key_event.key_id >= 2U) &&
@@ -464,17 +524,28 @@ static void control_task(void *argument)
             {
                 storage_task_sdio_diag_t diag;
                 uint8_t tf_ok = 0U;
+                uint8_t tf_full = 0U;
 
                 s_led_last_second = seconds;
 
                 board_led_set(1U, (uint8_t)((seconds % 2U) != 0U));
 
-                if (storage_task_sdio_diag_get(&diag) != 0)
-                {
-                    tf_ok = (diag.state == STORAGE_TASK_SDIO_STATE_READY) ? 1U : 0U;
-                }
+                (void)storage_task_sdio_diag_get(&diag);
+                tf_ok = storage_task_fatfs_storage_enabled_get();
+                tf_full = storage_task_fatfs_full_get();
 
                 board_led_set(5U, tf_ok);
+
+                if ((tf_full != 0U) &&
+                    (s_control_task_tf_full_reported == 0U))
+                {
+                    (void)app_cli_print("TF card full");
+                    s_control_task_tf_full_reported = 1U;
+                }
+                else if (tf_full == 0U)
+                {
+                    s_control_task_tf_full_reported = 0U;
+                }
             }
         }
 

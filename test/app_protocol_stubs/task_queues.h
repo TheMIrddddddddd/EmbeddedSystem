@@ -41,7 +41,7 @@ typedef struct
     uint8_t status;
     uint8_t reply_required;
     uint8_t apply_flags;
-    uint8_t payload[32];
+    uint8_t payload[132];
 } protocol_result_t;
 
 #endif

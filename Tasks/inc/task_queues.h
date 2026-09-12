@@ -20,7 +20,7 @@ typedef struct
 #define PROTOCOL_CUSTOM_REQUEST_DATA_MAX   12U
 /* RTU ADU 256B - 地址/功能码/CRC 4B，完整复制数据区。 */
 #define PROTOCOL_REQUEST_DATA_MAX          252U
-#define PROTOCOL_RESULT_DATA_MAX           32U
+#define PROTOCOL_RESULT_DATA_MAX           132U
 #define PROTOCOL_RESULT_APPLY_NONE         0x00U
 #define PROTOCOL_RESULT_APPLY_ID           0x01U
 #define PROTOCOL_RESULT_APPLY_BAUD         0x02U

@@ -1,0 +1,9 @@
+CC := gcc
+CFLAGS := -std=c99 -Wall -Wextra -Werror -g -O0
+INCLUDES := -I../BSP -I../Tasks/inc -Iunity
+TARGET ?= /tmp/industrial_storage_record_format_test
+SOURCES := ../Tasks/src/storage_record_format.c unity/unity.c test_storage_record_format.c
+.PHONY: test
+test:
+	$(CC) $(CFLAGS) $(INCLUDES) $(SOURCES) -o $(TARGET)
+	$(TARGET)

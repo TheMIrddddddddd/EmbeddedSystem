@@ -97,6 +97,8 @@ virtualFolder:
             - path: ../App/src/gd32f4xx_it.c
             - path: ../App/src/freertos_static.c
             - path: ../App/src/app_config.c
+            - path: ../App/src/app_config_ini.c
+            - path: ../App/src/app_config_import.c
             - path: ../App/src/app_cli.c
             - path: ../App/src/app_protocol.c
             - path: ../App/src/app_modbus.c
@@ -129,6 +131,11 @@ virtualFolder:
         - path: ../Tasks/src/health_task.c
         - path: ../Tasks/src/sample_task.c
         - path: ../Tasks/src/storage_task.c
+        - path: ../Tasks/src/storage_persist_queue.c
+        - path: ../Tasks/src/storage_persistence.c
+        - path: ../Tasks/src/alarm_logic.c
+        - path: ../Tasks/src/storage_record_format.c
+        - path: ../Tasks/src/storage_mount_policy.c
         - path: ../Tasks/src/app_task.c
         - path: ../Tasks/src/task_queues.c
         - path: ../Tasks/src/task_events.c

@@ -2,9 +2,9 @@
 #include "flash_kv.h"
 #include "common_crc.h"
 
-#define FLASH_KV_MAGIC         0xA55AU
-#define FLASH_KV_COMMIT_MARKER 0x5AU
-#define FLASH_KV_HEADER_SIZE   10U
+#define FLASH_KV_MAGIC         FLASH_KV_RECORD_MAGIC
+#define FLASH_KV_COMMIT_MARKER FLASH_KV_RECORD_COMMIT_MARKER
+#define FLASH_KV_HEADER_SIZE   FLASH_KV_RECORD_HEADER_SIZE
 
 static void write_u16_le(uint8_t *buffer, uint16_t value)
 {

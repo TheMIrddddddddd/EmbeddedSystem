@@ -1,6 +1,6 @@
 CC := gcc
 CFLAGS := -std=c99 -Wall -Wextra -g -O0
-INCLUDES := -Iapp_modbus_stubs -I../App/inc -I../Tasks/inc -I../Middleware/Protocol/inc -Iunity
+INCLUDES := -Iapp_modbus_stubs -I../App/inc -I../Tasks/inc -I../BSP -I../Middleware/Protocol/inc -Iunity
 TARGET ?= /tmp/industrial_app_modbus_test
 SOURCES := ../App/src/app_modbus.c ../App/src/app_config.c unity/unity.c test_app_modbus.c
 .PHONY: test

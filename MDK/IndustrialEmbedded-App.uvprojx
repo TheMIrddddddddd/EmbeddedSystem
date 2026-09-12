@@ -745,6 +745,16 @@
               <FilePath>..\App\src\app_config.c</FilePath>
             </File>
             <File>
+              <FileName>app_config_ini.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\app_config_ini.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_config_import.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\app_config_import.c</FilePath>
+            </File>
+            <File>
               <FileName>app_cli.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\src\app_cli.c</FilePath>
@@ -848,6 +858,31 @@
               <FileName>storage_task.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Tasks\src\storage_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>storage_persist_queue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\storage_persist_queue.c</FilePath>
+            </File>
+            <File>
+              <FileName>storage_persistence.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\storage_persistence.c</FilePath>
+            </File>
+            <File>
+              <FileName>alarm_logic.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\alarm_logic.c</FilePath>
+            </File>
+            <File>
+              <FileName>storage_record_format.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\storage_record_format.c</FilePath>
+            </File>
+            <File>
+              <FileName>storage_mount_policy.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tasks\src\storage_mount_policy.c</FilePath>
             </File>
             <File>
               <FileName>app_task.c</FileName>

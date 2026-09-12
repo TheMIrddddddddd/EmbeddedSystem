@@ -8,12 +8,15 @@
 #include "cli.h"
 #include "storage_task.h"
 #include "sample_task.h"
+#include "control_task.h"
+#include "task_events.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
 
 #define APP_CLI_DRAIN_TIMEOUT_TICKS    500U
 #define APP_CLI_OUTPUT_BUFFER_SIZE     64U
+#define APP_CLI_STORAGE_TIMEOUT_MS     2000U
 
 /*
  * banner 与 help 共用这份文本，只此一份，不放两处。
@@ -267,6 +270,14 @@ typedef enum
 static app_cli_input_mode_t s_pending_mode = APP_CLI_INPUT_NONE;
 static uint8_t s_pending_channel;
 
+static storage_task_persist_request_t s_storage_request;
+static storage_task_persist_result_t s_storage_result;
+static uint32_t s_storage_request_sequence;
+static uint32_t s_storage_pending_request_id;
+static uint8_t s_storage_pending_operation;
+static TickType_t s_storage_pending_deadline;
+static char s_config_line_buffer[APP_CLI_OUTPUT_BUFFER_SIZE];
+
 /* "ch0"/"ch1" -> 0/1，其余 0xFF */
 static uint8_t app_cli_channel_parse(const char *text)
 {
@@ -500,6 +511,233 @@ static void app_cli_print_current_hex4(const char *prefix, uint16_t value)
     (void)app_cli_print(buf);
 }
 
+static uint16_t app_cli_append_text(char *dst,
+                                    uint16_t pos,
+                                    const char *text)
+{
+    while (*text != '\0')
+    {
+        dst[pos] = *text;
+        pos++;
+        text++;
+    }
+
+    return pos;
+}
+
+static void app_cli_print_config(const app_config_t *config)
+{
+    uint16_t pos;
+
+    pos = 0U;
+    pos = app_cli_append_text(s_config_line_buffer, pos, "device_id=");
+    pos = app_cli_append_hex16(s_config_line_buffer, pos,
+                               config->device_id);
+    pos = app_cli_append_text(s_config_line_buffer, pos,
+                              " sample_period=");
+    pos += app_cli_u32_to_dec(&s_config_line_buffer[pos],
+                              config->sample_period_s,
+                              0U);
+    s_config_line_buffer[pos] = '\0';
+    (void)app_cli_print(s_config_line_buffer);
+
+    pos = 0U;
+    pos = app_cli_append_text(s_config_line_buffer, pos, "ch0_ratio=");
+    pos = app_cli_append_fixed2(s_config_line_buffer, pos,
+                                config->ratio[0]);
+    pos = app_cli_append_text(s_config_line_buffer, pos, " ch0_limit=");
+    pos = app_cli_append_fixed2(s_config_line_buffer, pos,
+                                config->limit[0]);
+    s_config_line_buffer[pos] = '\0';
+    (void)app_cli_print(s_config_line_buffer);
+
+    pos = 0U;
+    pos = app_cli_append_text(s_config_line_buffer, pos, "ch1_ratio=");
+    pos = app_cli_append_fixed2(s_config_line_buffer, pos,
+                                config->ratio[1]);
+    pos = app_cli_append_text(s_config_line_buffer, pos, " ch1_limit=");
+    pos = app_cli_append_fixed2(s_config_line_buffer, pos,
+                                config->limit[1]);
+    s_config_line_buffer[pos] = '\0';
+    (void)app_cli_print(s_config_line_buffer);
+
+    pos = 0U;
+    pos = app_cli_append_text(s_config_line_buffer, pos,
+                              "protocol_mode=");
+    pos += app_cli_u32_to_dec(&s_config_line_buffer[pos],
+                              config->protocol_mode,
+                              0U);
+    pos = app_cli_append_text(s_config_line_buffer, pos, " alarm_mode=");
+    pos += app_cli_u32_to_dec(&s_config_line_buffer[pos],
+                              config->alarm_mode,
+                              0U);
+    s_config_line_buffer[pos] = '\0';
+    (void)app_cli_print(s_config_line_buffer);
+
+    pos = 0U;
+    pos = app_cli_append_text(s_config_line_buffer, pos, "baudrate=");
+    pos += app_cli_u32_to_dec(&s_config_line_buffer[pos],
+                              config->rs485_baudrate,
+                              0U);
+    s_config_line_buffer[pos] = '\0';
+    (void)app_cli_print(s_config_line_buffer);
+}
+
+static uint32_t app_cli_storage_next_request_id(void)
+{
+    s_storage_request_sequence++;
+
+    if (s_storage_request_sequence == 0U)
+    {
+        s_storage_request_sequence++;
+    }
+
+    return s_storage_request_sequence;
+}
+
+static cli_status_t app_cli_storage_request_start(
+    uint8_t operation,
+    char *output)
+{
+    app_config_t config;
+    uint16_t payload_length;
+
+    if (s_storage_pending_request_id != 0U)
+    {
+        (void)strcpy(output, "storage busy");
+        return CLI_STATUS_OK;
+    }
+
+    (void)memset(&s_storage_request, 0, sizeof(s_storage_request));
+    s_storage_request.request_id = app_cli_storage_next_request_id();
+    s_storage_request.deadline_tick =
+        xTaskGetTickCount() + pdMS_TO_TICKS(APP_CLI_STORAGE_TIMEOUT_MS);
+    s_storage_request.operation = operation;
+    s_storage_request.origin = STORAGE_TASK_PERSIST_ORIGIN_CONTROL;
+
+    if (operation == STORAGE_TASK_PERSIST_CONFIG_SAVE)
+    {
+        if ((app_config_get(&config) == 0) ||
+            (app_config_encode(&config,
+                               s_storage_request.payload,
+                               sizeof(s_storage_request.payload),
+                               &payload_length) == 0))
+        {
+            (void)strcpy(output, "config save invalid");
+            return CLI_STATUS_OK;
+        }
+
+        s_storage_request.payload_length = payload_length;
+        app_cli_print_config(&config);
+    }
+
+    if (storage_task_persist_request_submit(&s_storage_request) == 0)
+    {
+        (void)strcpy(output, "storage busy");
+        return CLI_STATUS_OK;
+    }
+
+    s_storage_pending_request_id = s_storage_request.request_id;
+    s_storage_pending_operation = operation;
+    s_storage_pending_deadline = s_storage_request.deadline_tick;
+
+    if (operation == STORAGE_TASK_PERSIST_CONFIG_SAVE)
+    {
+        (void)strcpy(output, "config save pending");
+    }
+    else
+    {
+        (void)strcpy(output, (operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT) ?
+                     "config import pending" : "config read pending");
+    }
+
+    return CLI_STATUS_OK;
+}
+
+static void app_cli_print_storage_error(uint8_t operation, uint8_t status)
+{
+    const char *operation_text;
+    const char *status_text;
+    uint16_t pos;
+
+    operation_text = (operation == STORAGE_TASK_PERSIST_CONFIG_SAVE) ?
+                     "config save" : ((operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT) ?
+                     "config import" : "config read");
+
+    switch (status)
+    {
+    case STORAGE_TASK_PERSIST_STATUS_NOT_FOUND:
+        status_text = "not found";
+        break;
+
+    case STORAGE_TASK_PERSIST_STATUS_NOT_READY:
+        status_text = "not ready";
+        break;
+
+    case STORAGE_TASK_PERSIST_STATUS_FLASH_ERROR:
+        status_text = "flash error";
+        break;
+
+    case STORAGE_TASK_PERSIST_STATUS_DATA_ERROR:
+        status_text = "data error";
+        break;
+
+    default:
+        status_text = "failed";
+        break;
+    }
+
+    pos = 0U;
+    pos = app_cli_append_text(s_config_line_buffer, pos, operation_text);
+    pos = app_cli_append_text(s_config_line_buffer, pos, ": ");
+    pos = app_cli_append_text(s_config_line_buffer, pos, status_text);
+    s_config_line_buffer[pos] = '\0';
+    (void)app_cli_print(s_config_line_buffer);
+}
+
+/* 显示 config.ini 导入的读取/解析阶段，保留底层 status 的通用错误输出。 */
+static void app_cli_print_config_import_detail(
+    const storage_task_persist_result_t *result)
+{
+    uint16_t detail;
+    uint16_t pos = 0U;
+    if ((result == NULL) || (result->payload_length < 3U)) return;
+    detail = (uint16_t)result->payload[1] |
+             ((uint16_t)result->payload[2] << 8U);
+    if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_PARSE)
+    {
+        pos = app_cli_append_text(s_config_line_buffer, pos,
+                                  "config import parse error at line ");
+        pos += app_cli_u32_to_dec(&s_config_line_buffer[pos], detail, 0U);
+        s_config_line_buffer[pos] = '\0';
+        (void)app_cli_print(s_config_line_buffer);
+    }
+    else if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_SIZE)
+    {
+        pos = app_cli_append_text(s_config_line_buffer, pos,
+                                  "config import file too large: ");
+        pos += app_cli_u32_to_dec(&s_config_line_buffer[pos], detail, 0U);
+        s_config_line_buffer[pos] = '\0';
+        (void)app_cli_print(s_config_line_buffer);
+    }
+    else if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_OPEN)
+    {
+        pos = app_cli_append_text(s_config_line_buffer, pos,
+                                  "config import file open error: ");
+        pos += app_cli_u32_to_dec(&s_config_line_buffer[pos], detail, 0U);
+        s_config_line_buffer[pos] = '\0';
+        (void)app_cli_print(s_config_line_buffer);
+    }
+    else if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_READ)
+    {
+        pos = app_cli_append_text(s_config_line_buffer, pos,
+                                  "config import file read error: ");
+        pos += app_cli_u32_to_dec(&s_config_line_buffer[pos], detail, 0U);
+        s_config_line_buffer[pos] = '\0';
+        (void)app_cli_print(s_config_line_buffer);
+    }
+}
+
 /* "ch0 ratio set to 5.50 [OK]" */
 static void app_cli_print_channel_ok(uint8_t channel, const char *what, float value)
 {
@@ -541,6 +779,8 @@ static void app_cli_apply_ratio(const char *line)
     }
 
     (void)sample_task_ratio_set(s_pending_channel, value);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_RATIO_SET,
+                                          s_pending_channel, value, 0.0f, 0U);
 
     app_cli_print_channel_ok(s_pending_channel, "ratio set to", value);
 }
@@ -557,6 +797,8 @@ static void app_cli_apply_limit(const char *line)
     }
 
     app_cli_print_channel_ok(s_pending_channel, "limit set to", value);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_LIMIT_SET,
+                                          s_pending_channel, value, 0.0f, 0U);
 }
 
 static void app_cli_apply_protocol(const char *line)
@@ -585,6 +827,8 @@ static void app_cli_apply_protocol(const char *line)
     {
         (void)app_cli_print("protocol set to 1 (modbus)");
     }
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_PROTOCOL_SET,
+                                          0U, 0.0f, 0.0f, mode);
 }
 
 static void app_cli_apply_id(const char *line)
@@ -600,6 +844,8 @@ static void app_cli_apply_id(const char *line)
 
     /* 文档原文带 ", saved [OK]"，持久化在 M5，M4 阶段不打印 saved */
     app_cli_print_current_hex4("device id set to ", value);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_DEVICE_ID_SET,
+                                          0U, 0.0f, 0.0f, value);
 }
 
 static void app_cli_apply_baud(const char *line)
@@ -616,6 +862,8 @@ static void app_cli_apply_baud(const char *line)
     board_usart1_rs485_baudrate_set(value);
 
     app_cli_print_current_dec("baudrate set to ", value);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_BAUDRATE_SET,
+                                          0U, 0.0f, 0.0f, value);
 }
 
 /*
@@ -784,6 +1032,8 @@ static cli_status_t app_cli_start(int argc, const char *argv[],
     }
 
     (void)app_config_sample_enable_set(1U);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_SAMPLE_START,
+                                          0U, 0.0f, 0.0f, 0U);
 
     (void)strcpy(output, "sampling started");
 
@@ -801,6 +1051,8 @@ static cli_status_t app_cli_stop(int argc, const char *argv[],
     }
 
     (void)app_config_sample_enable_set(0U);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_SAMPLE_STOP,
+                                          0U, 0.0f, 0.0f, 0U);
 
     (void)strcpy(output, "sampling stopped");
 
@@ -818,6 +1070,8 @@ static cli_status_t app_cli_hide(int argc, const char *argv[],
     }
 
     (void)app_config_hide_mode_set(1U);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_HIDE_ON,
+                                          0U, 0.0f, 0.0f, 0U);
 
     (void)strcpy(output, "hide mode on");
 
@@ -835,6 +1089,8 @@ static cli_status_t app_cli_unhide(int argc, const char *argv[],
     }
 
     (void)app_config_hide_mode_set(0U);
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_HIDE_OFF,
+                                          0U, 0.0f, 0.0f, 0U);
 
     (void)strcpy(output, "hide mode off");
 
@@ -993,6 +1249,54 @@ static cli_status_t app_cli_baud(int argc, const char *argv[],
     return CLI_STATUS_OK;
 }
 
+static cli_status_t app_cli_config(int argc, const char *argv[],
+                                   char *output, size_t output_size)
+{
+    (void)output_size;
+
+    if (argc != 2)
+    {
+        return CLI_STATUS_INVALID_ARGUMENTS;
+    }
+
+    if (strcmp(argv[1], "save") == 0)
+    {
+        return app_cli_storage_request_start(
+            STORAGE_TASK_PERSIST_CONFIG_SAVE,
+            output);
+    }
+
+    if (strcmp(argv[1], "read") == 0)
+    {
+        return app_cli_storage_request_start(
+            STORAGE_TASK_PERSIST_CONFIG_READ,
+            output);
+    }
+
+    if (strcmp(argv[1], "import") == 0)
+    {
+        return app_cli_storage_request_start(
+            STORAGE_TASK_PERSIST_CONFIG_IMPORT,
+            output);
+    }
+
+    return CLI_STATUS_INVALID_ARGUMENTS;
+}
+
+/* conf 直接触发 TF 卡 config.ini 导入；结果仍由 ControlTask 轮询应用。 */
+static cli_status_t app_cli_conf(int argc, const char *argv[],
+                                 char *output, size_t output_size)
+{
+    (void)argv;
+    (void)output_size;
+    if (argc != 1)
+    {
+        return CLI_STATUS_INVALID_ARGUMENTS;
+    }
+    return app_cli_storage_request_start(
+        STORAGE_TASK_PERSIST_CONFIG_IMPORT, output);
+}
+
 static cli_status_t app_cli_rtc(int argc, const char *argv[],
                                 char *output, size_t output_size)
 {
@@ -1045,6 +1349,7 @@ static cli_status_t app_cli_test(int argc, const char *argv[],
     uint16_t pos;
     uint8_t flash_pass = 0U;
     uint8_t tf_pass = 0U;
+    uint8_t fatfs_pass = 0U;
     uint8_t rtc_pass = 0U;
     uint8_t all_pass;
 
@@ -1078,6 +1383,29 @@ static cli_status_t app_cli_test(int argc, const char *argv[],
     (void)app_cli_print((tf_pass != 0U) ?
         "TF Card    : Found     [PASS]" : "TF Card    : Not Found [FAIL]");
 
+    fatfs_pass = storage_task_fatfs_mounted_get();
+    (void)app_cli_print((fatfs_pass != 0U) ?
+        "FatFs      : Mounted   [PASS]" : "FatFs      : Not Mounted [FAIL]");
+
+    if (fatfs_pass == 0U)
+    {
+        pos = 0U;
+        pos = app_cli_append_text(buf, pos, "FatFsErr=");
+        pos += app_cli_u32_to_dec(&buf[pos],
+                                  storage_task_fatfs_mount_result_get(),
+                                  0U);
+        buf[pos] = '\0';
+        (void)app_cli_print(buf);
+
+        pos = 0U;
+        pos = app_cli_append_text(buf, pos, "DMAerr=");
+        pos += app_cli_u32_to_dec(&buf[pos],
+                                  board_sdio_dma_polling_error_get(),
+                                  0U);
+        buf[pos] = '\0';
+        (void)app_cli_print(buf);
+    }
+
     (void)app_cli_print("OLED       : OK        [PASS]");
 
     if (board_rtc_time_get(&time) == 0)
@@ -1098,10 +1426,177 @@ static cli_status_t app_cli_test(int argc, const char *argv[],
         (void)app_cli_print(buf);
     }
 
-    all_pass = (uint8_t)(flash_pass & tf_pass & rtc_pass);
+    all_pass = (uint8_t)(flash_pass & tf_pass & fatfs_pass & rtc_pass);
 
     (void)app_cli_print((all_pass != 0U) ?
         "=== Test Result: PASS ===" : "=== Test Result: FAIL ===");
+    (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_SYSTEM_TEST,
+                                          0U, 0.0f, 0.0f, all_pass);
+
+    return CLI_STATUS_OK;
+}
+
+void app_cli_storage_result_poll(void)
+{
+    app_config_t config;
+
+    if (s_storage_pending_request_id == 0U)
+    {
+        return;
+    }
+
+    while (storage_task_persist_result_get(&s_storage_result, 0U) != 0)
+    {
+        if ((s_storage_result.request_id != s_storage_pending_request_id) ||
+            (s_storage_result.operation != s_storage_pending_operation))
+        {
+            /* 丢弃迟到或不属于当前 CLI 请求的完成消息。 */
+            continue;
+        }
+
+        s_storage_pending_request_id = 0U;
+
+        if (s_storage_result.status != STORAGE_TASK_PERSIST_STATUS_OK)
+        {
+            if (s_storage_pending_operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT)
+            {
+                app_cli_print_config_import_detail(&s_storage_result);
+                (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_CONFIG_IMPORT,
+                                                      0U, 0.0f, 0.0f, 0U);
+            }
+            app_cli_print_storage_error(s_storage_pending_operation,
+                                         s_storage_result.status);
+            return;
+        }
+
+        if (s_storage_pending_operation == STORAGE_TASK_PERSIST_CONFIG_SAVE)
+        {
+            (void)app_cli_print("save to flash [OK]");
+            return;
+        }
+
+        if (s_storage_pending_operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT)
+        {
+            if (control_apply_persisted_config(&s_storage_result) == 0U)
+            {
+                (void)app_cli_print("config import: apply error");
+                return;
+            }
+            (void)xEventGroupSetBits(task_events_get(), TASK_EVENT_CONFIG_READY);
+            (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_CONFIG_IMPORT,
+                                                  0U, 0.0f, 0.0f, 1U);
+            (void)app_cli_print("config.ini loaded and saved [OK]");
+            return;
+        }
+
+        if ((s_storage_result.payload_length != APP_CONFIG_SERIALIZED_SIZE) ||
+            (app_config_decode(s_storage_result.payload,
+                               s_storage_result.payload_length,
+                               &config) == 0))
+        {
+            (void)app_cli_print("config read: data error");
+            return;
+        }
+
+        app_cli_print_config(&config);
+        return;
+    }
+
+    if ((int32_t)(xTaskGetTickCount() - s_storage_pending_deadline) >= 0)
+    {
+        s_storage_pending_request_id = 0U;
+        (void)app_cli_print("storage operation timeout");
+    }
+}
+
+/* 诊断命令（仅板级排障用）：绕过 StorageTask，直接对 GD25Q40E 状态
+ * 寄存器与 0x7F000 空白扇区做擦写回读，逐阶段输出结果。
+ * 扇区选在 KV 双扇区（0x0000/0x1000）之外，不与持久化数据重叠。
+ * 调用前须确保无未完成的存储请求。 */
+#define APP_CLI_FLASH_DIAG_ADDRESS 0x0007F000UL
+
+static cli_status_t app_cli_flashdiag(int argc, const char *argv[],
+                                      char *output, size_t output_size)
+{
+    uint8_t pattern[16];
+    uint8_t check[16];
+    uint8_t status;
+    uint8_t pass;
+    uint16_t index;
+
+    (void)argv;
+    (void)output;
+    (void)output_size;
+
+    if (argc != 1)
+    {
+        return CLI_STATUS_INVALID_ARGUMENTS;
+    }
+
+    status = board_spi_flash_read_status();
+    app_cli_print_current_hex4("flash status before : 0x", status);
+
+    /* WREN 后回读状态：WEL(bit1) 应置位，否则写被硬件拒绝。 */
+    pass = (uint8_t)board_spi_flash_write_enable();
+    status = board_spi_flash_read_status();
+    app_cli_print_current_hex4("flash status wren   : 0x", status);
+    (void)app_cli_print((pass != 0U) ?
+        "write enable        : [PASS]" : "write enable        : [FAIL]");
+
+    pass = (uint8_t)board_spi_flash_sector_erase(APP_CLI_FLASH_DIAG_ADDRESS);
+    (void)app_cli_print((pass != 0U) ?
+        "sector erase        : [PASS]" : "sector erase        : [FAIL]");
+
+    /* 擦除成功后整扇区内容应为 0xFF。 */
+    (void)memset(check, 0, sizeof(check));
+    pass = 0U;
+    if (board_spi_flash_read(APP_CLI_FLASH_DIAG_ADDRESS,
+                             check, sizeof(check)) != 0)
+    {
+        pass = 1U;
+        for (index = 0U; index < sizeof(check); index++)
+        {
+            if (check[index] != 0xFFU)
+            {
+                pass = 0U;
+                break;
+            }
+        }
+    }
+    (void)app_cli_print((pass != 0U) ?
+        "erase verify 0xFF   : [PASS]" : "erase verify 0xFF   : [FAIL]");
+
+    for (index = 0U; index < sizeof(pattern); index++)
+    {
+        pattern[index] = (uint8_t)(0xA5U ^ index);
+    }
+
+    pass = (uint8_t)board_spi_flash_page_program(APP_CLI_FLASH_DIAG_ADDRESS,
+                                                 pattern, sizeof(pattern));
+    (void)app_cli_print((pass != 0U) ?
+        "page program        : [PASS]" : "page program        : [FAIL]");
+
+    /* 读回与模板逐字节比对。 */
+    (void)memset(check, 0, sizeof(check));
+    pass = 0U;
+    if (board_spi_flash_read(APP_CLI_FLASH_DIAG_ADDRESS,
+                             check, sizeof(check)) != 0)
+    {
+        pass = 1U;
+        for (index = 0U; index < sizeof(pattern); index++)
+        {
+            if (check[index] != pattern[index])
+            {
+                pass = 0U;
+                break;
+            }
+        }
+    }
+    (void)app_cli_print((pass != 0U) ?
+        "program verify      : [PASS]" : "program verify      : [FAIL]");
+
+    status = board_spi_flash_read_status();
+    app_cli_print_current_hex4("flash status after  : 0x", status);
 
     return CLI_STATUS_OK;
 }
@@ -1119,8 +1614,11 @@ static const cli_command_t s_cli_commands[] =
     { "protocol", app_cli_protocol },
     { "id",      app_cli_id },
     { "baud",    app_cli_baud },
+    { "config",  app_cli_config },
+    { "conf",    app_cli_conf },
     { "rtc",     app_cli_rtc },
-    { "test",    app_cli_test }
+    { "test",    app_cli_test },
+    { "flashdiag", app_cli_flashdiag }
 };
 
 #define APP_CLI_COMMAND_COUNT \
