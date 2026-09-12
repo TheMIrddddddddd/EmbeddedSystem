@@ -722,11 +722,19 @@ static void app_cli_print_config_import_detail(
     }
     else if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_OPEN)
     {
-        (void)app_cli_print("config import file open error");
+        pos = app_cli_append_text(s_config_line_buffer, pos,
+                                  "config import file open error: ");
+        pos += app_cli_u32_to_dec(&s_config_line_buffer[pos], detail, 0U);
+        s_config_line_buffer[pos] = '\0';
+        (void)app_cli_print(s_config_line_buffer);
     }
     else if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_READ)
     {
-        (void)app_cli_print("config import file read error");
+        pos = app_cli_append_text(s_config_line_buffer, pos,
+                                  "config import file read error: ");
+        pos += app_cli_u32_to_dec(&s_config_line_buffer[pos], detail, 0U);
+        s_config_line_buffer[pos] = '\0';
+        (void)app_cli_print(s_config_line_buffer);
     }
 }
 

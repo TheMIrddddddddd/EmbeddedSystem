@@ -345,6 +345,18 @@ static void test_config_import_parse_error_reports_line(void)
     TEST_ASSERT_NOT_NULL(strstr(s_output, "config import parse error at line 7"));
 }
 
+/* 验证 config import 文件打开失败保留并显示 FatFs FRESULT。 */
+static void test_config_import_open_error_reports_status(void)
+{
+    const uint8_t payload[] = {1U, 5U, 0U};
+    app_cli_execute_line("conf");
+    test_set_result(STORAGE_TASK_PERSIST_CONFIG_IMPORT,
+                    STORAGE_TASK_PERSIST_STATUS_DATA_ERROR,
+                    payload, sizeof(payload));
+    app_cli_storage_result_poll();
+    TEST_ASSERT_NOT_NULL(strstr(s_output, "config import file open error: 5"));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -355,5 +367,6 @@ int main(void)
     RUN_TEST(test_storage_submit_failure_is_reported_without_pending_state);
     RUN_TEST(test_matching_result_is_required_before_clearing_pending_state);
     RUN_TEST(test_config_import_parse_error_reports_line);
+    RUN_TEST(test_config_import_open_error_reports_status);
     return UNITY_END();
 }
