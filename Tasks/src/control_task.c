@@ -20,9 +20,6 @@
 #define CONTROL_TASK_PRIORITY          3U
 #define CONTROL_TASK_STACK_DEPTH       256U
 
-/* 《01》四-4：超限指示灯 LED3 */
-#define CONTROL_LED_OVER_LIMIT         3U
-
 #define CLI_ECHO_ENABLE                1U
 
 #define CLI_CHAR_BACKSPACE             0x08U
