@@ -284,29 +284,106 @@ static void test_boot_count_errors(void)
     s_program_fail_after = -1;
 }
 
+/* 验证长期运行下 boot_count 与 config 的重复写入不会写满记录层。
+ * 每次上电都会追加一条 boot_count，若提交时不压缩历史记录，
+ * 记录数超过 FLASH_KV_MAX_RECORDS 后所有写入都会失败。 */
+static void test_repeated_writes_do_not_exhaust_records(void)
+{
+    uint32_t count = 0U;
+    app_config_t config = test_config(0x0123U, 57600U);
+    uint8_t expected[APP_CONFIG_SERIALIZED_SIZE];
+    uint8_t actual[APP_CONFIG_SERIALIZED_SIZE];
+    uint16_t actual_length = 0U;
+    uint8_t index;
+
+    (void)memset(s_flash, 0xFF, sizeof(s_flash));
+    s_program_fail_after = -1;
+    s_program_calls = 0;
+
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_init());
+
+    for (index = 0U; index < 20U; index++)
+    {
+        TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                              storage_persistence_boot_count_next(&count));
+    }
+    TEST_ASSERT_EQUAL_UINT32(20U, count);
+
+    TEST_ASSERT_TRUE(test_config_encode(&config, expected));
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_config_save(
+                              expected,
+                              sizeof(expected)));
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_init());
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_config_read(
+                              actual,
+                              sizeof(actual),
+                              &actual_length));
+    test_config_payload_equal(expected, actual, actual_length);
+}
+
 static void test_crc_corruption_is_reported_as_data_error(void)
 {
     app_config_t config = test_config(0x0077U, 115200U);
     uint8_t payload[APP_CONFIG_SERIALIZED_SIZE];
     uint8_t actual[APP_CONFIG_SERIALIZED_SIZE];
     uint16_t actual_length = 0U;
-    uint8_t record_index;
+    int corrupted = 0;
+    uint32_t sector_base;
+
+    (void)memset(s_flash, 0xFF, sizeof(s_flash));
+    s_program_fail_after = -1;
+    s_program_calls = 0;
+
+    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
+                          storage_persistence_init());
 
     TEST_ASSERT_TRUE(test_config_encode(&config, payload));
     TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
                           storage_persistence_config_save(
                               payload,
                               sizeof(payload)));
-    TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
-                          storage_persistence_init());
 
-    /* 当前场景已保存三次配置，破坏 sector B 中三条记录的 CRC。 */
-    for (record_index = 0U; record_index < 3U; record_index++)
+    /* 在两个扇区中查找 config 记录并破坏 CRC，保证最新扇区读取失败。 */
+    for (sector_base = 0U;
+         (sector_base == 0U) || (sector_base == TEST_SECTOR_SIZE);
+         sector_base += TEST_SECTOR_SIZE)
     {
-        s_flash[TEST_SECTOR_B + TEST_RECORD_OFFSET +
-                ((uint32_t)record_index * TEST_RECORD_SIZE) +
-                TEST_RECORD_CRC_OFFSET] ^= 0x01U;
+        uint32_t offset = sector_base + TEST_RECORD_OFFSET;
+
+        while ((offset + 10U) <= (sector_base + TEST_SECTOR_SIZE))
+        {
+            uint8_t *record = &s_flash[offset];
+            size_t key_length = record[2];
+            size_t value_length = (size_t)record[3] |
+                                  ((size_t)record[4] << 8U);
+            size_t record_size = 10U + key_length + value_length;
+
+            if ((record[0] != 0x5AU) || (record[1] != 0xA5U) ||
+                (key_length == 0U) ||
+                (record_size > (TEST_SECTOR_SIZE - (offset - sector_base))) ||
+                (record[9] != 0x5AU))
+            {
+                break;
+            }
+
+            if ((key_length == 6U) &&
+                (memcmp(&record[10], "config", 6U) == 0))
+            {
+                record[TEST_RECORD_CRC_OFFSET] ^= 0x01U;
+                corrupted = 1;
+                break;
+            }
+
+            offset += record_size;
+        }
     }
+
+    TEST_ASSERT_TRUE(corrupted);
+
     TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_OK,
                           storage_persistence_init());
     TEST_ASSERT_EQUAL_INT(STORAGE_PERSISTENCE_STATUS_DATA_ERROR,
@@ -403,6 +480,7 @@ int main(void)
     RUN_TEST(test_flash_diag_returns_expected_jedec_id);
     RUN_TEST(test_boot_count_persists_and_increments);
     RUN_TEST(test_boot_count_errors);
+    RUN_TEST(test_repeated_writes_do_not_exhaust_records);
     RUN_TEST(test_crc_corruption_is_reported_as_data_error);
     RUN_TEST(test_request_handler_saves_and_reads_config);
     RUN_TEST(test_request_handler_maps_invalid_config_to_data_error);

@@ -5,6 +5,7 @@
 
 #include "app_config.h"
 #include "board_spi_flash.h"
+#include "common_crc.h"
 #include "flash_kv.h"
 
 #define STORAGE_PERSISTENCE_PAGE_SIZE       0x0100U
@@ -29,9 +30,21 @@ static flash_kv_t s_flash_kv;
 static flash_kv_t s_reopened_flash_kv;
 static uint8_t s_storage_persistence_initialized;
 
+/* 提交前按 key 去重所需的静态工作区：避免上电/保存次数累积记录。 */
+static flash_kv_latest_record_t s_latest_records[FLASH_KV_MAX_RECORDS];
+static uint8_t s_record_crc_buffer[FLASH_KV_MAX_KEY_LENGTH +
+                                    FLASH_KV_MAX_VALUE_LENGTH];
+
 static uint16_t storage_persistence_u16_load_le(const uint8_t *buffer)
 {
     return (uint16_t)buffer[0] | ((uint16_t)buffer[1] << 8U);
+}
+
+static void storage_persistence_u16_store_le(uint8_t *buffer,
+                                             uint16_t value)
+{
+    buffer[0] = (uint8_t)(value & 0xFFU);
+    buffer[1] = (uint8_t)((value >> 8U) & 0xFFU);
 }
 
 static void storage_persistence_u32_store_le(uint8_t *buffer,
@@ -248,11 +261,120 @@ static storage_persistence_status_t storage_persistence_reload(void)
     return STORAGE_PERSISTENCE_STATUS_OK;
 }
 
+/* 扫描当前扇区，按 key 只保留 CRC 校验通过的最新一条记录。
+ * 语义与 FlashKV 自身的压缩一致：遇到格式损坏立即停止，
+ * CRC 错误的单条记录跳过，不阻塞后续有效记录。 */
+static int storage_persistence_collect_latest(size_t source_length,
+                                              size_t *record_count)
+{
+    size_t offset;
+    size_t count = 0U;
+
+    if ((s_flash_kv.storage == NULL) || (record_count == NULL))
+    {
+        return 0;
+    }
+
+    offset = FLASH_KV_SECTOR_HEADER_SIZE;
+
+    while ((offset + STORAGE_PERSISTENCE_RECORD_HEADER) <= source_length)
+    {
+        const uint8_t *record = &s_flash_kv.storage[offset];
+        size_t key_length = record[2];
+        size_t value_length =
+            storage_persistence_u16_load_le(&record[3]);
+        size_t record_size = STORAGE_PERSISTENCE_RECORD_HEADER +
+                             key_length + value_length;
+        size_t index;
+        uint32_t stored_crc;
+        uint32_t calculated_crc;
+
+        if ((storage_persistence_u16_load_le(&record[0]) !=
+             STORAGE_PERSISTENCE_RECORD_MAGIC) ||
+            (key_length == 0U) ||
+            (key_length > FLASH_KV_MAX_KEY_LENGTH) ||
+            (value_length > FLASH_KV_MAX_VALUE_LENGTH) ||
+            (record_size > (source_length - offset)) ||
+            (record[STORAGE_PERSISTENCE_RECORD_COMMIT] !=
+             STORAGE_PERSISTENCE_RECORD_MARKER))
+        {
+            break;
+        }
+
+        (void)memcpy(s_record_crc_buffer,
+                     &record[STORAGE_PERSISTENCE_RECORD_HEADER],
+                     key_length);
+
+        if (value_length > 0U)
+        {
+            (void)memcpy(&s_record_crc_buffer[key_length],
+                         &record[STORAGE_PERSISTENCE_RECORD_HEADER +
+                                 key_length],
+                         value_length);
+        }
+
+        stored_crc = storage_persistence_u32_load_le(&record[5]);
+        calculated_crc = common_crc32_calc(
+            s_record_crc_buffer,
+            (uint32_t)(key_length + value_length));
+
+        if (stored_crc == calculated_crc)
+        {
+            for (index = 0U; index < count; index++)
+            {
+                if ((s_latest_records[index].key_length == key_length) &&
+                    (memcmp(s_latest_records[index].key,
+                            &record[STORAGE_PERSISTENCE_RECORD_HEADER],
+                            key_length) == 0))
+                {
+                    break;
+                }
+            }
+
+            if (index == count)
+            {
+                if (count >= FLASH_KV_MAX_RECORDS)
+                {
+                    return 0;
+                }
+
+                count++;
+            }
+
+            s_latest_records[index].valid = 1U;
+            s_latest_records[index].key_length = key_length;
+            s_latest_records[index].value_length = value_length;
+            (void)memcpy(s_latest_records[index].key,
+                         &record[STORAGE_PERSISTENCE_RECORD_HEADER],
+                         key_length);
+            s_latest_records[index].key[key_length] = '\0';
+
+            if (value_length > 0U)
+            {
+                (void)memcpy(s_latest_records[index].value,
+                             &record[STORAGE_PERSISTENCE_RECORD_HEADER +
+                                     key_length],
+                             value_length);
+            }
+        }
+
+        offset += record_size;
+    }
+
+    *record_count = count;
+    return 1;
+}
+
+/* 组装目标扇区镜像：写入新 generation，并把去重后的记录逐条重写，
+ * 使提交后的记录数恒定，不随上电/保存次数增长。 */
 static int storage_persistence_build_candidate(uint32_t generation,
                                                size_t *used_length)
 {
     size_t source_length;
-    uint8_t record_count;
+    size_t record_count = 0U;
+    uint8_t scanned_count = 0U;
+    size_t offset;
+    size_t index;
 
     if ((s_flash_kv.storage == NULL) ||
         (s_flash_kv.write_offset < FLASH_KV_SECTOR_HEADER_SIZE) ||
@@ -262,25 +384,95 @@ static int storage_persistence_build_candidate(uint32_t generation,
     }
 
     source_length = s_flash_kv.write_offset;
-    (void)memset(s_candidate_sector, 0xFF,
-                 sizeof(s_candidate_sector));
-    (void)memcpy(s_candidate_sector,
-                 s_flash_kv.storage,
-                 source_length);
 
-    storage_persistence_u32_store_le(&s_candidate_sector[4], generation);
-    storage_persistence_u32_store_le(&s_candidate_sector[8],
-                                     FLASH_KV_SECTOR_COMMIT);
+    (void)memset(s_latest_records, 0, sizeof(s_latest_records));
 
-    if (storage_persistence_records_scan(s_candidate_sector,
-                                         source_length,
-                                         s_record_commit_offsets,
-                                         &record_count) == 0)
+    if (storage_persistence_collect_latest(source_length,
+                                           &record_count) == 0)
     {
         return 0;
     }
 
-    *used_length = source_length;
+    (void)memset(s_candidate_sector, 0xFF,
+                 sizeof(s_candidate_sector));
+    storage_persistence_u32_store_le(&s_candidate_sector[0],
+                                     FLASH_KV_SECTOR_MAGIC);
+    storage_persistence_u32_store_le(&s_candidate_sector[4], generation);
+    storage_persistence_u32_store_le(&s_candidate_sector[8],
+                                     FLASH_KV_SECTOR_COMMIT);
+
+    offset = FLASH_KV_SECTOR_HEADER_SIZE;
+
+    for (index = 0U; index < record_count; index++)
+    {
+        uint8_t *record;
+        size_t key_length;
+        size_t value_length;
+        size_t record_size;
+        uint32_t crc;
+
+        if (s_latest_records[index].valid == 0U)
+        {
+            continue;
+        }
+
+        key_length = s_latest_records[index].key_length;
+        value_length = s_latest_records[index].value_length;
+        record_size = STORAGE_PERSISTENCE_RECORD_HEADER +
+                      key_length + value_length;
+
+        if (record_size > (STORAGE_PERSISTENCE_SECTOR_SIZE - offset))
+        {
+            return 0;
+        }
+
+        (void)memcpy(s_record_crc_buffer,
+                     s_latest_records[index].key,
+                     key_length);
+
+        if (value_length > 0U)
+        {
+            (void)memcpy(&s_record_crc_buffer[key_length],
+                         s_latest_records[index].value,
+                         value_length);
+        }
+
+        crc = common_crc32_calc(s_record_crc_buffer,
+                                (uint32_t)(key_length + value_length));
+
+        record = &s_candidate_sector[offset];
+        storage_persistence_u16_store_le(&record[0],
+                                         STORAGE_PERSISTENCE_RECORD_MAGIC);
+        record[2] = (uint8_t)key_length;
+        storage_persistence_u16_store_le(&record[3],
+                                         (uint16_t)value_length);
+        storage_persistence_u32_store_le(&record[5], crc);
+        record[STORAGE_PERSISTENCE_RECORD_COMMIT] =
+            STORAGE_PERSISTENCE_RECORD_MARKER;
+        (void)memcpy(&record[STORAGE_PERSISTENCE_RECORD_HEADER],
+                     s_latest_records[index].key,
+                     key_length);
+
+        if (value_length > 0U)
+        {
+            (void)memcpy(&record[STORAGE_PERSISTENCE_RECORD_HEADER +
+                                 key_length],
+                         s_latest_records[index].value,
+                         value_length);
+        }
+
+        offset += record_size;
+    }
+
+    if (storage_persistence_records_scan(s_candidate_sector,
+                                         offset,
+                                         s_record_commit_offsets,
+                                         &scanned_count) == 0)
+    {
+        return 0;
+    }
+
+    *used_length = offset;
     return 1;
 }
 
