@@ -695,6 +695,41 @@ static void app_cli_print_storage_error(uint8_t operation, uint8_t status)
     (void)app_cli_print(s_config_line_buffer);
 }
 
+/* 显示 config.ini 导入的读取/解析阶段，保留底层 status 的通用错误输出。 */
+static void app_cli_print_config_import_detail(
+    const storage_task_persist_result_t *result)
+{
+    uint16_t detail;
+    uint16_t pos = 0U;
+    if ((result == NULL) || (result->payload_length < 3U)) return;
+    detail = (uint16_t)result->payload[1] |
+             ((uint16_t)result->payload[2] << 8U);
+    if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_PARSE)
+    {
+        pos = app_cli_append_text(s_config_line_buffer, pos,
+                                  "config import parse error at line ");
+        pos += app_cli_u32_to_dec(&s_config_line_buffer[pos], detail, 0U);
+        s_config_line_buffer[pos] = '\0';
+        (void)app_cli_print(s_config_line_buffer);
+    }
+    else if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_SIZE)
+    {
+        pos = app_cli_append_text(s_config_line_buffer, pos,
+                                  "config import file too large: ");
+        pos += app_cli_u32_to_dec(&s_config_line_buffer[pos], detail, 0U);
+        s_config_line_buffer[pos] = '\0';
+        (void)app_cli_print(s_config_line_buffer);
+    }
+    else if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_OPEN)
+    {
+        (void)app_cli_print("config import file open error");
+    }
+    else if (result->payload[0] == STORAGE_TASK_CONFIG_IMPORT_ERROR_READ)
+    {
+        (void)app_cli_print("config import file read error");
+    }
+}
+
 /* "ch0 ratio set to 5.50 [OK]" */
 static void app_cli_print_channel_ok(uint8_t channel, const char *what, float value)
 {
@@ -1393,6 +1428,7 @@ void app_cli_storage_result_poll(void)
         {
             if (s_storage_pending_operation == STORAGE_TASK_PERSIST_CONFIG_IMPORT)
             {
+                app_cli_print_config_import_detail(&s_storage_result);
                 (void)storage_task_audit_event_submit(STORAGE_TASK_AUDIT_CONFIG_IMPORT,
                                                       0U, 0.0f, 0.0f, 0U);
             }
