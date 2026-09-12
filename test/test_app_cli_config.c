@@ -115,6 +115,11 @@ int storage_task_sdio_diag_get(storage_task_sdio_diag_t *diag)
     return 1;
 }
 
+uint8_t storage_task_fatfs_mounted_get(void)
+{
+    return 1U;
+}
+
 int storage_task_persist_request_submit(
     const storage_task_persist_request_t *request)
 {

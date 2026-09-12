@@ -82,6 +82,11 @@ int storage_task_sdio_diag_get(storage_task_sdio_diag_t *diag)
     return 1;
 }
 
+uint8_t storage_task_fatfs_mounted_get(void)
+{
+    return 1U;
+}
+
 int storage_task_audit_event_submit(uint8_t event, uint8_t channel,
                                     float value0, float value1,
                                     uint32_t argument)

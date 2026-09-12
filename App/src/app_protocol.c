@@ -379,11 +379,8 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
         /* 1B：1=卡在位且已挂载，0=不可用 */
         result->payload[0] = 0U;
 
-        if (storage_task_sdio_diag_get(&diag) != 0)
-        {
-            result->payload[0] =
-                (diag.state == STORAGE_TASK_SDIO_STATE_READY) ? 1U : 0U;
-        }
+        (void)storage_task_sdio_diag_get(&diag);
+        result->payload[0] = storage_task_fatfs_mounted_get();
 
         result->payload_length = 1U;
         break;
@@ -405,10 +402,8 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
                           (jedec_id[2] == 0x13U)) ? 1U : 0U;
         }
 
-        if (storage_task_sdio_diag_get(&diag) != 0)
-        {
-            tf_pass = (diag.state == STORAGE_TASK_SDIO_STATE_READY) ? 1U : 0U;
-        }
+        (void)storage_task_sdio_diag_get(&diag);
+        tf_pass = storage_task_fatfs_mounted_get();
 
         /* 布局：[0]=OLED(启动已验证) [1]=Flash [2]=TF [3]=RTC */
         result->payload[0] = 1U;

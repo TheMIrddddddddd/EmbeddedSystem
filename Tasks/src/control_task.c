@@ -528,10 +528,8 @@ static void control_task(void *argument)
 
                 board_led_set(1U, (uint8_t)((seconds % 2U) != 0U));
 
-                if (storage_task_sdio_diag_get(&diag) != 0)
-                {
-                    tf_ok = (diag.state == STORAGE_TASK_SDIO_STATE_READY) ? 1U : 0U;
-                }
+                (void)storage_task_sdio_diag_get(&diag);
+                tf_ok = storage_task_fatfs_mounted_get();
 
                 board_led_set(5U, tf_ok);
             }

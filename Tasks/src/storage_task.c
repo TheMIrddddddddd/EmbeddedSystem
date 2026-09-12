@@ -1425,3 +1425,9 @@ int storage_task_sdio_diag_get(storage_task_sdio_diag_t *diag)
 
     return 1;
 }
+
+/* 返回 FatFs 是否已经成功挂载，区别于仅表示 SDIO 就绪的卡状态。 */
+uint8_t storage_task_fatfs_mounted_get(void)
+{
+    return (s_storage_fatfs_mounted != 0U) ? 1U : 0U;
+}
