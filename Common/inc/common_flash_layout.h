@@ -36,6 +36,14 @@
 #define STAGING_BASE                                    0x08052000UL
 #define STAGING_SIZE                                    0x00020000UL
 
+#define INTERNAL_FLASH_END                              (INTERNAL_FLASH_BASE + INTERNAL_FLASH_SIZE - 1UL)
+#define BOOT_END                                        (BOOT_BASE + BOOT_SIZE - 1UL)
+#define BACKUP_END                                      (BACKUP_BASE + BACKUP_SIZE - 1UL)
+#define STAGING_END                                     (STAGING_BASE + STAGING_SIZE - 1UL)
+#define APP_PAGE_COUNT                                  (APP_SIZE / INTERNAL_FLASH_PAGE_SIZE)
+#define BACKUP_PAGE_COUNT                               (BACKUP_SIZE / INTERNAL_FLASH_PAGE_SIZE)
+#define STAGING_PAGE_COUNT                              (STAGING_SIZE / INTERNAL_FLASH_PAGE_SIZE)
+
 #define MANIFEST_RESERVED_SIZE                          64UL
 #define APP_MANIFEST_ADDR                               (APP_BASE + APP_SIZE - MANIFEST_RESERVED_SIZE)
 #define MAX_IMAGE_SIZE                                  (APP_SIZE - MANIFEST_RESERVED_SIZE)

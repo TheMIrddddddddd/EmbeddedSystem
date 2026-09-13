@@ -569,6 +569,11 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\board_spi_flash.c</FilePath>
             </File>
+            <File>
+              <FileName>board_internal_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_internal_flash.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
