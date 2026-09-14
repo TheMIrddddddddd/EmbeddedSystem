@@ -15,6 +15,6 @@
 
 version: "2.1"
 options:
-    IndustrialEmbedded_Boot:
+    IndustrialEmbedded_App:
         files: {}
         virtualPathFiles: {}

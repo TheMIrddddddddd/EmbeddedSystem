@@ -3,13 +3,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "common_flash_layout.h"
 
 #define FIRMWARE_HEADER_MAGIC                   0x5AA5C33CUL
 #define FIRMWARE_HEADER_PACKAGE_VERSION         1U
 #define FIRMWARE_HEADER_SIZE                    32U     
 
-#define FIRMWARE_HEADER_TARGET_ADDRESS          0x08012000UL
-#define FIRMWARE_HEADER_MAX_IMAGE_SIZE          ((128UL * 1024UL) - 64UL)
+#define FIRMWARE_HEADER_TARGET_ADDRESS          APP_BASE
+#define FIRMWARE_HEADER_MAX_IMAGE_SIZE          MAX_IMAGE_SIZE
 
 #define FIRMWARE_HEADER_FLAG_ALLOW_DOWNGRADE    (1UL << 0)
 #define FIRMWARE_HEADER_FLAG_FORCE_UPGRADE      (1UL << 1)
@@ -20,9 +21,14 @@
 #define IMAGE_MANIFEST_SIZE                     20U
 
 #define UPGRADE_META_MAGIC                      0x554D4454UL
-#define UPGRADE_META_VERSION                    1U
-#define UPGRADE_META_SIZE                       68U
+#define UPGRADE_META_VERSION                    2U
+#define UPGRADE_META_SIZE                       72U
 #define UPGRADE_META_COMMIT_MARKER              0xA5C3C3A5UL
+
+#define UPGRADE_META_REQUEST_OFFSET             60U
+#define UPGRADE_META_CRC32_OFFSET               64U
+#define UPGRADE_META_COMMIT_MARKER_OFFSET       68U
+#define UPGRADE_META_CRC32_INPUT_SIZE           64U
 
 typedef enum
 {
@@ -60,6 +66,12 @@ typedef enum
     FW_FORMAT_STATUS_INVALID_FIELD,
     FW_FORMAT_STATUS_CRC_ERROR
 } fw_format_status_t;
+
+typedef enum
+{
+    UPGRADE_META_REQUEST_NONE = 0,
+    UPGRADE_META_REQUEST_ENTER_BOOT = 1
+} upgrade_meta_request_t;
 
 typedef struct 
 {
@@ -108,6 +120,8 @@ typedef struct
 
     uint32_t failed_package_crc32;
     uint32_t failed_package_version;
+
+    uint32_t request;
 
     uint32_t crc32;
     uint32_t commit_marker;

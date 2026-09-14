@@ -92,8 +92,7 @@ static fw_format_status_t image_manifest_validate(
     return FW_FORMAT_STATUS_OK;
 }
 
-static fw_format_status_t upgrade_meta_validate(
-    const upgrade_meta_t *meta)
+static fw_format_status_t upgrade_meta_validate(const upgrade_meta_t *meta)
 {
     if (meta == NULL)
     {
@@ -121,6 +120,11 @@ static fw_format_status_t upgrade_meta_validate(
     }
 
     if (meta->upgrade_source > UPGRADE_SOURCE_TF_OFFLINE)
+    {
+        return FW_FORMAT_STATUS_INVALID_FIELD;
+    }
+
+    if (meta->request > UPGRADE_META_REQUEST_ENTER_BOOT)
     {
         return FW_FORMAT_STATUS_INVALID_FIELD;
     }
@@ -348,16 +352,19 @@ fw_format_status_t upgrade_meta_encode(
     write_u32_le(&buffer[52], meta->failed_package_crc32);
     write_u32_le(&buffer[56], meta->failed_package_version);
 
+    write_u32_le(&buffer[UPGRADE_META_REQUEST_OFFSET], meta->request);
+
     /*
-     * CRC 范围为前 60 字节。
+     * CRC 覆盖 offset 0 ~ 63，共 64 字节。
      */
-    meta_crc = common_crc32_calc(buffer, 60U);
-    write_u32_le(&buffer[60], meta_crc);
+    meta_crc = common_crc32_calc(buffer, UPGRADE_META_CRC32_INPUT_SIZE);
+
+    write_u32_le(&buffer[UPGRADE_META_CRC32_OFFSET], meta_crc);
 
     /*
      * commit_marker 是最后 4 字节。
      */
-    write_u32_le(&buffer[64], meta->commit_marker);
+    write_u32_le(&buffer[UPGRADE_META_COMMIT_MARKER_OFFSET], meta->commit_marker);
 
     return FW_FORMAT_STATUS_OK;
 }
@@ -405,8 +412,9 @@ fw_format_status_t upgrade_meta_decode(
     meta->failed_package_crc32 = read_u32_le(&buffer[52]);
     meta->failed_package_version = read_u32_le(&buffer[56]);
 
-    meta->crc32 = read_u32_le(&buffer[60]);
-    meta->commit_marker = read_u32_le(&buffer[64]);
+    meta->request = read_u32_le(&buffer[UPGRADE_META_REQUEST_OFFSET]);
+    meta->crc32 = read_u32_le(&buffer[UPGRADE_META_CRC32_OFFSET]);
+    meta->commit_marker = read_u32_le(&buffer[UPGRADE_META_COMMIT_MARKER_OFFSET]);
 
     status = upgrade_meta_validate(meta);
 
@@ -416,7 +424,9 @@ fw_format_status_t upgrade_meta_decode(
     }
 
     stored_crc = meta->crc32;
-    calculated_crc = common_crc32_calc(buffer, 60U);
+    calculated_crc = common_crc32_calc(
+        buffer,
+        UPGRADE_META_CRC32_INPUT_SIZE);
 
     if (stored_crc != calculated_crc)
     {
