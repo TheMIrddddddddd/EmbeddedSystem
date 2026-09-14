@@ -624,6 +624,16 @@
               <FileType>1</FileType>
               <FilePath>..\Bootloader\src\gd32f4xx_it.c</FilePath>
             </File>
+            <File>
+              <FileName>boot_upgrade_meta.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_meta.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_app_image.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_app_image.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

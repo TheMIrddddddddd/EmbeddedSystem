@@ -1,5 +1,5 @@
 version: "4.1"
-name: IndustrialEmbedded-App
+name: IndustrialEmbedded-Boot
 type: ARM
 deviceName: GD32F470VE
 packDir: .pack/GigaDevice/GD32F4xx_DFP.3.5.0
@@ -52,95 +52,35 @@ virtualFolder:
       files:
         - path: ../BSP/board_config.h
         - path: ../BSP/board_gpio.c
-        - path: ../BSP/board_usart.c
         - path: ../BSP/board_spi_flash.c
-        - path: ../BSP/board_key.c
-        - path: ../BSP/board_i2c.c
-        - path: ../BSP/board_oled.c
-        - path: ../BSP/board_sdio.c
-        - path: ../BSP/board_dma_map.h
-        - path: ../BSP/board_adc.c
-        - path: ../BSP/board_dac.c
-        - path: ../BSP/board_rtc.c
-        - path: ../BSP/board_timebase.c
-      folders: []
-    - name: Middleware
-      files:
-        - path: ../Middleware/CLI/src/cli.c
-        - path: ../Middleware/Ringbuffer/src/ringbuffer.c
-        - path: ../Middleware/Protocol/src/protocol_frame.c
-        - path: ../Middleware/Protocol/src/modbus_rtu.c
-        - path: ../Middleware/FlashKV/src/flash_kv.c
-        - path: ../Middleware/Ebtn/src/ebtn.c
-        - path: ../Middleware/Ebtn/inc/bit_array.h
-        - path: ../Middleware/FatFs/src/diskio.c
-        - path: ../Middleware/FatFs/src/ff.c
-        - path: ../Middleware/FatFs/inc/ffconf.h
-        - path: ../Middleware/FatFs/src/fattime.c
-        - path: ../Middleware/FatFs/src/ffsystem.c
-        - path: ../Middleware/FatFs/src/ffunicode.c
-        - path: ../Middleware/Protocol/src/protocol_stream.c
+        - path: ../BSP/board_internal_flash.c
       folders: []
     - name: Common
       files:
         - path: ../Common/src/common_crc.c
+        - path: ../Common/src/systick.c
         - path: ../Common/inc/common_flash_layout.h
         - path: ../Common/src/upgrade_serialization.c
         - path: ../Common/inc/common_reset_contract.h
       folders: []
-    - name: App
+    - name: Bootloader
       files: []
       folders:
         - name: src
           files:
-            - path: ../App/src/app_main.c
-            - path: ../App/src/gd32f4xx_it.c
-            - path: ../App/src/freertos_static.c
-            - path: ../App/src/app_config.c
-            - path: ../App/src/app_config_ini.c
-            - path: ../App/src/app_config_import.c
-            - path: ../App/src/app_cli.c
-            - path: ../App/src/app_protocol.c
-            - path: ../App/src/app_modbus.c
+            - path: ../Bootloader/src/boot_jump.c
+            - path: ../Bootloader/src/boot_main.c
+            - path: ../Bootloader/src/gd32f4xx_it.c
+            - path: ../Bootloader/src/boot_upgrade_meta.c
+            - path: ../Bootloader/src/boot_app_image.c
           folders: []
-        - name: config
-          files:
-            - path: ../App/config/FreeRTOSConfig.h
-          folders: []
-    - name: FreeRTOS
-      files: []
-      folders:
-        - name: Kernel
-          files:
-            - path: ../Middleware/FreeRTOS/Kernel/event_groups.c
-            - path: ../Middleware/FreeRTOS/Kernel/list.c
-            - path: ../Middleware/FreeRTOS/Kernel/queue.c
-            - path: ../Middleware/FreeRTOS/Kernel/tasks.c
-            - path: ../Middleware/FreeRTOS/Kernel/timers.c
-          folders: []
-        - name: Portable
-          files:
-            - path: ../Middleware/FreeRTOS/Kernel/portable/RVDS/ARM_CM4F/port.c
-          folders: []
-    - name: Tasks
+    - name: Middleware
       files:
-        - path: ../Tasks/src/protocol_task.c
-        - path: ../Tasks/src/alarm_task.c
-        - path: ../Tasks/src/control_task.c
-        - path: ../Tasks/src/display_task.c
-        - path: ../Tasks/src/health_task.c
-        - path: ../Tasks/src/sample_task.c
-        - path: ../Tasks/src/storage_task.c
-        - path: ../Tasks/src/storage_persist_queue.c
-        - path: ../Tasks/src/storage_persistence.c
-        - path: ../Tasks/src/alarm_logic.c
-        - path: ../Tasks/src/storage_record_format.c
-        - path: ../Tasks/src/storage_mount_policy.c
-        - path: ../Tasks/src/app_task.c
-        - path: ../Tasks/src/task_queues.c
-        - path: ../Tasks/src/task_events.c
-        - path: ../Tasks/src/task_mutex.c
-        - path: ../Tasks/src/task_timer.c
+        - path: ../Middleware/CLI/src/cli.c
+        - path: ../Middleware/Protocol/src/modbus_rtu.c
+        - path: ../Middleware/Protocol/src/protocol_frame.c
+        - path: ../Middleware/Ringbuffer/src/ringbuffer.c
+        - path: ../Middleware/FlashKV/src/flash_kv.c
       folders: []
 dependenceList: []
 outDir: build
