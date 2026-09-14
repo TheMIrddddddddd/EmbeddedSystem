@@ -73,6 +73,7 @@ virtualFolder:
             - path: ../Bootloader/src/gd32f4xx_it.c
             - path: ../Bootloader/src/boot_upgrade_meta.c
             - path: ../Bootloader/src/boot_app_image.c
+            - path: ../Bootloader/inc/boot_upgrade_begin.h
           folders: []
     - name: Middleware
       files:

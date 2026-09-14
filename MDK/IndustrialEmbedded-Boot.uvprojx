@@ -634,6 +634,11 @@
               <FileType>1</FileType>
               <FilePath>..\Bootloader\src\boot_app_image.c</FilePath>
             </File>
+            <File>
+              <FileName>boot_upgrade_begin.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_begin.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

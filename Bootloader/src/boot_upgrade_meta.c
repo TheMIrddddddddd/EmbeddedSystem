@@ -343,3 +343,96 @@ finish:
     g_boot_upgrade_meta_write_status = status;
     return status;
 }
+
+boot_upgrade_meta_write_status_t boot_upgrade_meta_update(boot_upgrade_meta_slot_t active_slot, const upgrade_meta_t *active_meta, const upgrade_meta_t *updated_meta, upgrade_meta_t *committed_meta, boot_upgrade_meta_slot_t *written_slot)
+{
+    upgrade_meta_t next_meta;
+    boot_upgrade_meta_write_status_t status;
+    boot_upgrade_meta_slot_status_t read_status;
+
+    if ((active_meta == 0) ||
+        (updated_meta == 0) ||
+        (committed_meta == 0) ||
+        (written_slot == 0))
+    {
+        return BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+    }
+
+    *committed_meta = *active_meta;
+    *written_slot = BOOT_UPGRADE_META_SLOT_NONE;
+
+    /*
+     * 状态更新只能从当前有效槽 A 或 B 开始。
+     * NONE 只用于首次初始化 Slot A，
+     * 不能用于普通状态更新。
+     */
+    if ((active_slot != BOOT_UPGRADE_META_SLOT_A) &&
+        (active_slot != BOOT_UPGRADE_META_SLOT_B))
+    {
+        return BOOT_UPGRADE_META_WRITE_INVALID_SLOT;
+    }
+
+    if (active_meta->generation == 0xFFFFFFFFUL)
+    {
+        return BOOT_UPGRADE_META_WRITE_GENERATION_OVERFLOW;
+    }
+
+    /*
+     * updated_meta 是 RAM 中的下一条逻辑记录。
+     */
+    next_meta = *updated_meta;
+
+    /*
+     * 固定字段由接口统一接管。
+     */
+    next_meta.magic = UPGRADE_META_MAGIC;
+    next_meta.meta_version = UPGRADE_META_VERSION;
+
+    /*
+     * generation 必须严格递增，
+     * 不接受调用者自行传入的 generation。
+     */
+    next_meta.generation = active_meta->generation + 1U;
+
+    /*
+     * crc32 由 upgrade_meta_encode() 重新计算。
+     */
+    next_meta.crc32 = 0U;
+
+    /*
+     * commit_marker 由接口统一保证。
+     */
+    next_meta.commit_marker = UPGRADE_META_COMMIT_MARKER;
+
+    /*
+     * 写入当前有效槽的另一侧：
+     *
+     * A → B
+     * B → A
+     */
+    status = boot_upgrade_meta_write_inactive(
+        active_slot,
+        &next_meta,
+        written_slot
+    );
+
+    if (status != BOOT_UPGRADE_META_WRITE_OK)
+    {
+        return status;
+    }
+
+    /*
+     * 再读回一次，得到包含实际 crc32 的完整逻辑对象。
+     */
+    read_status = boot_upgrade_meta_read_slot(
+        *written_slot,
+        committed_meta
+    );
+
+    if (read_status != BOOT_UPGRADE_META_SLOT_VALID)
+    {
+        return BOOT_UPGRADE_META_WRITE_COMMIT_VERIFY_FAILED;
+    }
+
+    return BOOT_UPGRADE_META_WRITE_OK;
+}
