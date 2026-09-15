@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware\Protocol\inc;..\Common\inc;..\Bootloader\inc;..\Middleware\Ringbuffer\inc;..\Middleware\CLI\inc;..\Middleware\Protocol\inc;..\Middleware\FlashKV\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App;..\BSP;..\Middleware\Protocol\inc;..\Common\inc;..\Bootloader\inc;..\Middleware\Ringbuffer\inc;..\Middleware\CLI\inc;..\Middleware\Protocol\inc;..\Middleware\FlashKV\inc;..\Middleware\FatFs\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -565,6 +565,16 @@
               <FilePath>..\BSP\board_gpio.c</FilePath>
             </File>
             <File>
+              <FileName>board_usart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_usart.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_timebase.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_timebase.c</FilePath>
+            </File>
+            <File>
               <FileName>board_spi_flash.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BSP\board_spi_flash.c</FilePath>
@@ -573,6 +583,16 @@
               <FileName>board_internal_flash.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BSP\board_internal_flash.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_sdio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_sdio.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_sdio.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\BSP\board_sdio.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -603,6 +623,11 @@
               <FileName>common_reset_contract.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Common\inc\common_reset_contract.h</FilePath>
+            </File>
+            <File>
+              <FileName>common_crash_marker.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Common\inc\common_crash_marker.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -635,9 +660,99 @@
               <FilePath>..\Bootloader\src\boot_app_image.c</FilePath>
             </File>
             <File>
+              <FileName>boot_upgrade_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_staging.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_staging.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_data.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_data.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_end.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_end.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_install.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_install.c</FilePath>
+            </File>
+            <File>
               <FileName>boot_upgrade_begin.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Bootloader\inc\boot_upgrade_begin.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_protocol.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_protocol.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_staging.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_staging.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_data.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_data.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_context.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_context.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_end.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_end.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_state.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_state.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_install.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_install.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_trial.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_trial.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_request.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_request.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_offline.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_offline.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_trial.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_trial.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_request.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_request.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_offline.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_offline.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -660,6 +775,11 @@
               <FilePath>..\Middleware\Protocol\src\protocol_frame.c</FilePath>
             </File>
             <File>
+              <FileName>protocol_stream.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\Protocol\src\protocol_stream.c</FilePath>
+            </File>
+            <File>
               <FileName>ringbuffer.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Middleware\Ringbuffer\src\ringbuffer.c</FilePath>
@@ -668,6 +788,36 @@
               <FileName>flash_kv.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Middleware\FlashKV\src\flash_kv.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>FatFs</GroupName>
+          <Files>
+            <File>
+              <FileName>diskio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\diskio.c</FilePath>
+            </File>
+            <File>
+              <FileName>ff.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ff.c</FilePath>
+            </File>
+            <File>
+              <FileName>ffunicode.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ffunicode.c</FilePath>
+            </File>
+            <File>
+              <FileName>ffsystem.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\ffsystem.c</FilePath>
+            </File>
+            <File>
+              <FileName>fattime.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middleware\FatFs\src\fattime.c</FilePath>
             </File>
           </Files>
         </Group>

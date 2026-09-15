@@ -80,7 +80,7 @@ static uint8_t board_internal_flash_timebase_init(void)
     divider = timer_clock / BOARD_INTERNAL_FLASH_TIMEBASE_FREQUENCY_HZ;
 
     /*
-     * TIMER1 是 32 位自由运行计数器，
+     * TIMER4 是 32 位自由运行计数器，
      * PSC 实际分频系数为 prescaler + 1。
      */
     if ((divider == 0U) || (divider > 65536U))
@@ -88,9 +88,9 @@ static uint8_t board_internal_flash_timebase_init(void)
         return 0U;
     }
 
-    rcu_periph_clock_enable(BOARD_TIMEBASE_TIMER_RCU);
+    rcu_periph_clock_enable(BOARD_INTERNAL_FLASH_TIMER_RCU);
 
-    timer_deinit(BOARD_TIMEBASE_TIMER);
+    timer_deinit(BOARD_INTERNAL_FLASH_TIMER);
 
     timer_struct_para_init(&timer_config);
 
@@ -101,15 +101,15 @@ static uint8_t board_internal_flash_timebase_init(void)
     timer_config.clockdivision = TIMER_CKDIV_DIV1;
     timer_config.repetitioncounter = 0U;
 
-    timer_init(BOARD_TIMEBASE_TIMER, &timer_config);
+    timer_init(BOARD_INTERNAL_FLASH_TIMER, &timer_config);
 
-    timer_prescaler_config(BOARD_TIMEBASE_TIMER, timer_config.prescaler, TIMER_PSC_RELOAD_NOW);
-    timer_counter_value_config(BOARD_TIMEBASE_TIMER, 0U);
+    timer_prescaler_config(BOARD_INTERNAL_FLASH_TIMER, timer_config.prescaler, TIMER_PSC_RELOAD_NOW);
+    timer_counter_value_config(BOARD_INTERNAL_FLASH_TIMER, 0U);
 
     /*
-     * Boot 时基不启用 TIMER1 中断，只读取硬件 CNT。
+     * Boot FMC 时基不启用 TIMER4 中断，只读取硬件 CNT。
      */
-    timer_enable(BOARD_TIMEBASE_TIMER);
+    timer_enable(BOARD_INTERNAL_FLASH_TIMER);
 
     s_internal_flash_timebase_initialized = 1U;
 
@@ -119,7 +119,7 @@ static uint8_t board_internal_flash_timebase_init(void)
 
 static uint32_t board_internal_flash_timebase_now_us(void)
 {
-    return timer_counter_read(BOARD_TIMEBASE_TIMER);
+    return timer_counter_read(BOARD_INTERNAL_FLASH_TIMER);
 }
 
 static fmc_state_enum board_internal_flash_fmc_wait_ready_watchdog(uint32_t timeout_us,uint32_t feed_interval_us)
@@ -448,7 +448,7 @@ static board_internal_flash_status_t board_internal_flash_page_erase_verify(uint
 
     /*
      * 该函数只允许由成功完成 FMC 操作的路径调用。
-     * 成功的 FMC 等待过程已经初始化 TIMER1。
+     * 成功的 FMC 等待过程已经初始化 TIMER4。
      */
     if (s_internal_flash_timebase_initialized == 0U)
     {
@@ -499,7 +499,7 @@ board_internal_flash_status_t board_internal_flash_page_erase(board_internal_fla
     /*
      * 当前 Boot 阶段没有需要在单页擦除期间继续运行的中断业务。
      * 保存并屏蔽中断，避免未来协议/定时器 ISR 访问正在处理的区域。
-     * FMC 等待期间依赖 TIMER1 硬件计数，不依赖 SysTick 中断。
+     * FMC 等待期间依赖 TIMER4 硬件计数，不依赖 SysTick 中断。
      */
     primask = __get_PRIMASK();
     __disable_irq();
@@ -543,7 +543,7 @@ board_internal_flash_status_t board_internal_flash_page_erase(board_internal_fla
 
     /*
      * 等待本次页擦除完成。
-     * 期间使用 TIMER1 判断实际时间，并定期刷新 FWDGT。
+     * 期间使用 TIMER4 判断实际时间，并定期刷新 FWDGT。
      */
     fmc_state = board_internal_flash_fmc_wait_ready_watchdog(BOARD_INTERNAL_FLASH_PAGE_ERASE_TIMEOUT_US, BOARD_INTERNAL_FLASH_WATCHDOG_FEED_INTERVAL_US);
 
@@ -610,7 +610,7 @@ board_internal_flash_status_t board_internal_flash_page_program(board_internal_f
     /*
      * 保留进入函数前的中断状态。
      * 当前 Boot 阶段在 FMC 编程期间暂时屏蔽中断，
-     * 超时判断依赖 TIMER1 硬件 CNT，而不是 SysTick ISR。
+     * 超时判断依赖 TIMER4 硬件 CNT，而不是 SysTick ISR。
      */
     primask = __get_PRIMASK();
     __disable_irq();

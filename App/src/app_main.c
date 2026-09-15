@@ -2,6 +2,7 @@
 
 #include "gd32f4xx.h"
 #include "gd32f4xx_misc.h"
+#include "gd32f4xx_fwdgt.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -20,6 +21,22 @@
 #include "board_timebase.h"
 #include "common_flash_layout.h"
 
+static uint8_t app_fwdgt_init(void)
+{
+    if (fwdgt_config(4095U, FWDGT_PSC_DIV256) != SUCCESS)
+    {
+        return 0U;
+    }
+
+    fwdgt_counter_reload();
+    return 1U;
+}
+
+static void app_spi_flash_wait_feed(void)
+{
+    fwdgt_counter_reload();
+}
+
 int main(void)
 {
     app_tasks_status_t task_status;
@@ -30,6 +47,16 @@ int main(void)
     __ISB();
 
     nvic_priority_group_set(NVIC_PRIGROUP_PRE4_SUB0);
+
+    /* 试运行 App 在外设初始化阶段也必须受看门狗保护。 */
+    if (app_fwdgt_init() == 0U)
+    {
+        __disable_irq();
+
+        for (;;)
+        {
+        }
+    }
 
     if (board_timebase_init() == 0)
     {
@@ -79,6 +106,8 @@ int main(void)
         {
         }
     }
+
+    board_spi_flash_set_wait_hook(app_spi_flash_wait_feed);
 
     (void)board_rtc_init();
 

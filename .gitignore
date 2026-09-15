@@ -31,3 +31,7 @@ MDK/BootEIDE/target/
 
 # Python 测试工具缓存
 test/__pycache__/
+tools/__pycache__/
+
+# Codex 本地构建与审计产物
+.embeddedskills/

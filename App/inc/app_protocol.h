@@ -31,8 +31,12 @@ uint16_t app_protocol_report_interval_get(void);
 
 uint8_t app_protocol_alarm_report_enabled(void);
 
-/* 0x0101 重启：应答发出后由 ProtocolTask 轮询并执行复位 */
+/* 0x0101/0x0500：应答发出后由 ProtocolTask 轮询并执行复位 */
 uint8_t app_protocol_reboot_pending(void);
+
+#define APP_PROTOCOL_CMD_ENTER_BOOT          0x0500U
+#define APP_PROTOCOL_ERROR_UPGRADE_STATE    0x66U
+#define APP_PROTOCOL_ERROR_UPGRADE_STORAGE  0x67U
 
 /* 数据区大端序写助手（ProtocolTask 构造事件帧复用） */
 void app_protocol_store_u16_be(uint8_t *dst, uint16_t value);

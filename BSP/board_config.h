@@ -117,4 +117,12 @@
 #define BOARD_TIMEBASE_ALARM_IRQ       TIMER1_IRQn
 #define BOARD_TIMEBASE_ALARM_PRIORITY   6U
 
+/*
+ * 内部 Flash FMC 等待专用时基。
+ * TIMER4 与 TIMER1 一样是 32 位计数器，但不启用中断，
+ * 避免 FMC 等待路径重配置 RS485 使用的 TIMER1。
+ */
+#define BOARD_INTERNAL_FLASH_TIMER     TIMER4
+#define BOARD_INTERNAL_FLASH_TIMER_RCU RCU_TIMER4
+
 #endif /* BOARD_CONFIG_H */

@@ -1,5 +1,6 @@
 #include "health_task.h"
 
+#include "gd32f4xx.h"
 #include "gd32f4xx_fwdgt.h"
 
 #include "FreeRTOS.h"
@@ -11,6 +12,8 @@
 #include "control_task.h"
 #include "display_task.h"
 #include "storage_task.h"
+#include "task_events.h"
+#include "app_upgrade_confirm.h"
 
 #define HEALTH_WATCHDOG_RELOAD          4095U
 #define HEALTH_WATCHDOG_PRESCALER       FWDGT_PSC_DIV256
@@ -18,6 +21,7 @@
 #define HEALTH_TASK_PRIORITY       5U
 #define HEALTH_TASK_STACK_DEPTH    128U
 #define HEALTH_MISSED_LIMIT        3U
+#define HEALTH_CONFIRM_STABLE_CYCLES 3U
 
 typedef uint32_t (*health_metric_getter_t)(void);
 
@@ -42,6 +46,9 @@ static volatile uint8_t s_all_tasks_healthy;
 static volatile uint32_t s_health_task_stack_high_water_mark;
 
 static volatile uint8_t s_health_fault_latched;
+static uint8_t s_upgrade_confirm_stable_cycles;
+static uint8_t s_upgrade_confirm_requested;
+static uint8_t s_upgrade_confirm_handled;
 
 static health_monitor_item_t s_health_monitor_items[] =
 {
@@ -134,6 +141,68 @@ static void health_task(void *argument)
             s_health_task_heartbeat++;
             s_all_tasks_healthy = health_monitor_poll();
             s_health_task_stack_high_water_mark = (uint32_t)uxTaskGetStackHighWaterMark2(NULL); 
+
+            if ((s_all_tasks_healthy != 0U) &&
+                ((xEventGroupGetBits(task_events_get()) &
+                  TASK_EVENT_CONFIG_READY) != 0U))
+            {
+                if (s_upgrade_confirm_stable_cycles <
+                    HEALTH_CONFIRM_STABLE_CYCLES)
+                {
+                    s_upgrade_confirm_stable_cycles++;
+                }
+            }
+            else
+            {
+                s_upgrade_confirm_stable_cycles = 0U;
+            }
+
+            if ((s_upgrade_confirm_stable_cycles >=
+                 HEALTH_CONFIRM_STABLE_CYCLES) &&
+                (s_upgrade_confirm_requested == 0U) &&
+                (s_upgrade_confirm_handled == 0U))
+            {
+                if (storage_task_upgrade_confirm_request() != 0)
+                {
+                    s_upgrade_confirm_requested = 1U;
+                }
+            }
+
+            if (s_upgrade_confirm_requested != 0U)
+            {
+                storage_task_upgrade_confirm_status_t confirm_status;
+
+                confirm_status = storage_task_upgrade_confirm_status_get();
+
+                if (confirm_status == STORAGE_TASK_UPGRADE_CONFIRM_OK)
+                {
+                    s_upgrade_confirm_handled = 1U;
+                    s_upgrade_confirm_requested = 0U;
+                    fwdgt_counter_reload();
+                    NVIC_SystemReset();
+                }
+                else if (confirm_status ==
+                         STORAGE_TASK_UPGRADE_CONFIRM_NO_ACTION)
+                {
+                    s_upgrade_confirm_handled = 1U;
+                    s_upgrade_confirm_requested = 0U;
+                }
+                else if ((confirm_status ==
+                          STORAGE_TASK_UPGRADE_CONFIRM_FAILED) &&
+                         (g_app_upgrade_confirm_trial_detected != 0U))
+                {
+                    /* 确认失败时停止喂狗，交给 Boot 计入一次试运行失败。 */
+                    s_health_fault_latched = 1U;
+                    s_upgrade_confirm_handled = 1U;
+                    s_upgrade_confirm_requested = 0U;
+                }
+                else if (confirm_status ==
+                         STORAGE_TASK_UPGRADE_CONFIRM_FAILED)
+                {
+                    s_upgrade_confirm_handled = 1U;
+                    s_upgrade_confirm_requested = 0U;
+                }
+            }
 
             if (s_all_tasks_healthy == 0U)
             {

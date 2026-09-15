@@ -9,11 +9,20 @@
 #include "boot_jump.h"
 #include "boot_app_image.h"
 #include "boot_upgrade_begin.h"
+#include "boot_upgrade_install.h"
+#include "boot_upgrade_offline.h"
+#include "boot_upgrade_protocol.h"
+#include "boot_upgrade_request.h"
+#include "boot_upgrade_staging.h"
+#include "boot_upgrade_state.h"
+#include "boot_upgrade_trial.h"
 #include "common_reset_contract.h"
 
 #define BOOT_FWDGT_RELOAD      781U
 #define BOOT_FWDGT_PRESCALER   FWDGT_PSC_DIV256
 #define BOOT_WAIT_SECONDS      5U
+#define BOOT_ENTER_BOOT_WAIT_SECONDS 10U
+#define BOOT_STAGED_VALID_WAIT_SECONDS 60U
 
 volatile common_reset_reason_t g_boot_reset_reason;
 volatile uint8_t g_boot_meta_jedec_id[3];
@@ -301,7 +310,7 @@ static uint8_t boot_meta_recover_receiving(void)
     return 1U;
 }
 
-static boot_upgrade_meta_write_status_t boot_meta_enter_receiving(
+boot_upgrade_meta_write_status_t boot_upgrade_meta_enter_receiving(
     uint32_t pending_size,
     uint32_t pending_crc32,
     uint32_t pending_version,
@@ -357,6 +366,12 @@ static boot_upgrade_meta_write_status_t boot_meta_enter_receiving(
      * 防止在 RECEIVING、INSTALLING 等状态重复 BEGIN。
      */
     if (g_boot_meta_selected.state != FW_STATE_IDLE)
+    {
+        return BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+    }
+
+    /* 文件清理或上一轮升级未完成时，禁止覆盖其恢复依据。 */
+    if (g_boot_meta_selected.upgrade_source != UPGRADE_SOURCE_NONE)
     {
         return BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
     }
@@ -430,27 +445,153 @@ static boot_upgrade_meta_write_status_t boot_meta_enter_receiving(
     return BOOT_UPGRADE_META_WRITE_OK;
 }
 
-boot_upgrade_meta_write_status_t boot_upgrade_begin_accept(
+boot_upgrade_meta_write_status_t boot_upgrade_abort_receiving(void)
+{
+    upgrade_meta_t active_meta;
+    upgrade_meta_t next_meta;
+    upgrade_meta_t committed_meta;
+    upgrade_meta_t selected_meta;
+
+    boot_upgrade_meta_slot_t active_slot;
+    boot_upgrade_meta_slot_t written_slot;
+    boot_upgrade_meta_slot_t selected_slot;
+
+    boot_upgrade_meta_select_status_t select_status;
+    boot_upgrade_meta_write_status_t write_status;
+
+    if ((g_boot_meta_scan_status != BOOT_UPGRADE_META_SELECT_OK) &&
+        (g_boot_meta_scan_status != BOOT_UPGRADE_META_SELECT_OK_DEGRADED))
+    {
+        return BOOT_UPGRADE_META_WRITE_INVALID_SLOT;
+    }
+
+    if ((g_boot_meta_scan_slot != BOOT_UPGRADE_META_SLOT_A) &&
+        (g_boot_meta_scan_slot != BOOT_UPGRADE_META_SLOT_B))
+    {
+        return BOOT_UPGRADE_META_WRITE_INVALID_SLOT;
+    }
+
+    if ((g_boot_meta_selected.state != FW_STATE_RECEIVING) &&
+        (g_boot_meta_selected.state != FW_STATE_STAGED_VALID))
+    {
+        return BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+    }
+
+    if (g_boot_meta_selected.upgrade_source == UPGRADE_SOURCE_NONE)
+    {
+        return BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+    }
+
+    active_slot = g_boot_meta_scan_slot;
+    active_meta = g_boot_meta_selected;
+    next_meta = active_meta;
+
+    next_meta.state = FW_STATE_IDLE;
+    next_meta.install_stage = INSTALL_APP_VALID;
+    next_meta.pending_size = 0U;
+    next_meta.pending_crc32 = 0U;
+    next_meta.pending_version = 0U;
+    next_meta.upgrade_source = UPGRADE_SOURCE_NONE;
+    next_meta.request = UPGRADE_META_REQUEST_NONE;
+
+    written_slot = BOOT_UPGRADE_META_SLOT_NONE;
+
+    write_status = boot_upgrade_meta_update(
+        active_slot,
+        &active_meta,
+        &next_meta,
+        &committed_meta,
+        &written_slot
+    );
+
+    if ((write_status != BOOT_UPGRADE_META_WRITE_OK) ||
+        (written_slot == BOOT_UPGRADE_META_SLOT_NONE) ||
+        (written_slot == active_slot))
+    {
+        return write_status;
+    }
+
+    select_status = boot_upgrade_meta_select(
+        &selected_meta,
+        &selected_slot
+    );
+
+    if ((select_status != BOOT_UPGRADE_META_SELECT_OK) &&
+        (select_status != BOOT_UPGRADE_META_SELECT_OK_DEGRADED))
+    {
+        return BOOT_UPGRADE_META_WRITE_COMMIT_VERIFY_FAILED;
+    }
+
+    g_boot_meta_selected = selected_meta;
+    g_boot_meta_scan_slot = selected_slot;
+    g_boot_meta_scan_status = select_status;
+
+    return BOOT_UPGRADE_META_WRITE_OK;
+}
+
+volatile boot_upgrade_meta_write_status_t g_boot_upgrade_begin_meta_status =
+    BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+volatile board_internal_flash_status_t g_boot_upgrade_begin_staging_status =
+    BOARD_INTERNAL_FLASH_STATUS_OK;
+volatile boot_upgrade_meta_write_status_t g_boot_upgrade_begin_cleanup_status =
+    BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+
+boot_upgrade_begin_status_t boot_upgrade_begin_accept(
     const uint8_t *header_raw,
     uint32_t header_length)
 {
     firmware_header_t header;
     fw_format_status_t header_status;
+    boot_upgrade_meta_write_status_t meta_status;
+    board_internal_flash_status_t staging_status;
+
+    g_boot_upgrade_begin_meta_status = BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+    g_boot_upgrade_begin_staging_status = BOARD_INTERNAL_FLASH_STATUS_OK;
+    g_boot_upgrade_begin_cleanup_status = BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
 
     if ((header_raw == 0) ||
         (header_length != FIRMWARE_HEADER_SIZE))
     {
-        return BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+        return BOOT_UPGRADE_BEGIN_STATUS_INVALID_ARGUMENT;
     }
 
     header_status = firmware_header_decode(header_raw, header_length, &header);
 
     if (header_status != FW_FORMAT_STATUS_OK)
     {
-        return BOOT_UPGRADE_META_WRITE_INVALID_ARGUMENT;
+        return BOOT_UPGRADE_BEGIN_STATUS_INVALID_HEADER;
     }
 
-    return boot_meta_enter_receiving(header.image_size, header.image_crc32, header.firmware_version, UPGRADE_SOURCE_ONLINE);
+    if ((g_boot_meta_selected.state != FW_STATE_IDLE) ||
+        (g_boot_meta_selected.upgrade_source != UPGRADE_SOURCE_NONE))
+    {
+        return BOOT_UPGRADE_BEGIN_STATUS_STATE_NOT_ALLOWED;
+    }
+
+    meta_status = boot_upgrade_meta_enter_receiving(
+        header.image_size,
+        header.image_crc32,
+        header.firmware_version,
+        UPGRADE_SOURCE_ONLINE
+    );
+    g_boot_upgrade_begin_meta_status = meta_status;
+
+    if (meta_status != BOOT_UPGRADE_META_WRITE_OK)
+    {
+        return BOOT_UPGRADE_BEGIN_STATUS_META_WRITE_FAILED;
+    }
+
+    staging_status = boot_upgrade_staging_prepare();
+    g_boot_upgrade_begin_staging_status = staging_status;
+
+    if (staging_status != BOARD_INTERNAL_FLASH_STATUS_OK)
+    {
+        g_boot_upgrade_begin_cleanup_status = boot_upgrade_abort_receiving();
+        return BOOT_UPGRADE_BEGIN_STATUS_STAGING_PREPARE_FAILED;
+    }
+
+    g_boot_upgrade_begin_cleanup_status = BOOT_UPGRADE_META_WRITE_OK;
+    return BOOT_UPGRADE_BEGIN_STATUS_OK;
 }
 
 static uint8_t boot_meta_startup_state_dispatch(void)
@@ -497,34 +638,35 @@ static uint8_t boot_meta_startup_state_dispatch(void)
 
         case FW_STATE_STAGED_VALID:
             /*
-             * 尚未接入 ONLINE INSTALL/ABORT 和
-             * TF 自动安装分派。
+             * 在线升级在这里驻留等待 0x0504 INSTALL；
+             * INSTALL 成功后由安全升级主循环推进安装子阶段。
              */
             return 0U;
 
         case FW_STATE_INSTALLING:
             /*
-             * 尚未接入 BACKUP_START、
-             * BACKUP_VALID、APP_ERASING、
-             * APP_PROGRAMMING、APP_VALID 恢复矩阵。
+             * 安装状态由安全升级主循环按 install_stage 恢复：
+             * BACKUP_START 重置为 STAGED_VALID；
+             * 其余已标记破坏性阶段进入备份回滚。
              */
             return 0U;
 
         case FW_STATE_TRIAL_PENDING:
             /*
-             * 尚未接入 App 启动确认和失败计数。
+             * 本阶段先允许新 App 进入试运行；
+             * 启动确认、失败计数和试运行回滚属于下一阶段。
              */
-            return 0U;
+            return 1U;
 
         case FW_STATE_CONFIRMED:
             /*
-             * 尚未接入 CONFIRMED → IDLE 的完整提交路径。
+             * CONFIRMED → active=pending → IDLE 的提交由安全升级循环完成。
              */
             return 0U;
 
         case FW_STATE_ROLLBACK_REQUIRED:
             /*
-             * 尚未接入 Backup 回滚。
+             * 由安全升级循环调用统一 Backup 回滚路径。
              */
             return 0U;
 
@@ -585,11 +727,13 @@ static uint8_t boot_fwdgt_init(void)
     return 1U;
 }
 
-static void boot_wait_and_indicate(void)
+static uint8_t boot_wait_and_indicate(uint32_t wait_seconds)
 {
     uint32_t second;
+    uint32_t millisecond;
+    boot_upgrade_protocol_poll_status_t poll_status;
 
-    for (second = 0U; second < BOOT_WAIT_SECONDS;second++) {
+    for (second = 0U; second < wait_seconds; second++) {
         if ((second & 1U) == 0U) {
             board_led_on();
         }
@@ -597,12 +741,26 @@ static void boot_wait_and_indicate(void)
             board_led_off();
         }
 
-        fwdgt_counter_reload();
-        delay_1ms(1000U);
+        for (millisecond = 0U; millisecond < 1000U; millisecond++)
+        {
+            fwdgt_counter_reload();
+
+            poll_status = boot_upgrade_protocol_poll();
+
+            if (poll_status == BOOT_UPGRADE_PROTOCOL_POLL_BEGIN_ACCEPTED)
+            {
+                board_led_off();
+                return 0U;
+            }
+
+            delay_1ms(1U);
+        }
     }
 
     board_led_off();
     fwdgt_counter_reload();
+
+    return 1U;
 }
 
 static void boot_error_loop(void)
@@ -616,12 +774,14 @@ static void boot_error_loop(void)
 static void boot_safe_upgrade_loop(void)
 {
     uint32_t heartbeat;
+    uint32_t elapsed_ms;
 
     heartbeat = 0U;
+    elapsed_ms = 0U;
 
     /*
      * 当前阶段是安全升级模式的驻留骨架。
-     * 后续在循环内部接入升级接收和 0x0501 BEGIN 服务。
+     * 在循环内部轮询升级接收、0x0501 BEGIN 和 0x0504 INSTALL 服务。
      *
      * 这里必须保持中断开启，不能调用 __disable_irq()。
      */
@@ -630,28 +790,122 @@ static void boot_safe_upgrade_loop(void)
     {
         fwdgt_counter_reload();
 
-        if ((heartbeat & 1U) == 0U)
-        {
-            board_led_on();
-        }
-        else
+        (void)boot_upgrade_protocol_poll();
+        (void)boot_upgrade_trial_process();
+        (void)boot_upgrade_install_process();
+
+        /* RECEIVING 下 ABORT 成功后，结束安全驻留并启动原 App。 */
+        if ((g_boot_upgrade_protocol_abort_accepted != 0U) &&
+            (g_boot_meta_selected.state == FW_STATE_IDLE) &&
+            (g_boot_meta_selected.upgrade_source == UPGRADE_SOURCE_NONE))
         {
             board_led_off();
+            return;
         }
 
-        heartbeat++;
+        if (elapsed_ms >= 500U)
+        {
+            if ((heartbeat & 1U) == 0U)
+            {
+                board_led_on();
+            }
+            else
+            {
+                board_led_off();
+            }
+
+            heartbeat++;
+            elapsed_ms = 0U;
+        }
 
         /*
-         * 当前没有正式的升级服务函数，
-         * 先保持 Bootloader 驻留并喂狗。
+         * 保持 Bootloader 驻留、及时轮询并喂狗。
          */
-        delay_1ms(500U);
+        delay_1ms(10U);
+        elapsed_ms += 10U;
     }
 
 }
 
+static uint8_t boot_staged_valid_wait_and_indicate(void)
+{
+    uint32_t waited_ms;
+    uint32_t indicator_elapsed_ms;
+    uint32_t heartbeat;
+
+    waited_ms = 0U;
+    indicator_elapsed_ms = 0U;
+    heartbeat = 0U;
+
+    /*
+     * 在线升级在 STAGED_VALID 下等待 INSTALL。
+     * 超时只放弃本次驻留，不清除 pending 或 Staging，
+     * 让已经验证过的旧 App 继续运行。
+     */
+    while (waited_ms < (BOOT_STAGED_VALID_WAIT_SECONDS * 1000U))
+    {
+        if ((g_boot_meta_selected.state != FW_STATE_STAGED_VALID) ||
+            (g_boot_meta_selected.upgrade_source != UPGRADE_SOURCE_ONLINE))
+        {
+            board_led_off();
+
+            /* ABORT 已原子回到 IDLE，直接交给后面的 App 跳转路径。 */
+            if ((g_boot_meta_selected.state == FW_STATE_IDLE) &&
+                (g_boot_meta_selected.upgrade_source == UPGRADE_SOURCE_NONE) &&
+                (g_boot_upgrade_protocol_abort_accepted != 0U))
+            {
+                return 1U;
+            }
+
+            return 0U;
+        }
+
+        fwdgt_counter_reload();
+
+        (void)boot_upgrade_protocol_poll();
+        (void)boot_upgrade_trial_process();
+        (void)boot_upgrade_install_process();
+
+        if (indicator_elapsed_ms >= 500U)
+        {
+            if ((heartbeat & 1U) == 0U)
+            {
+                board_led_on();
+            }
+            else
+            {
+                board_led_off();
+            }
+
+            heartbeat++;
+            indicator_elapsed_ms = 0U;
+        }
+
+        delay_1ms(10U);
+        waited_ms += 10U;
+        indicator_elapsed_ms += 10U;
+    }
+
+    board_led_off();
+    fwdgt_counter_reload();
+
+    return 1U;
+}
+
 int main(void)
 {
+    boot_upgrade_trial_status_t trial_status;
+    boot_upgrade_install_status_t install_status;
+    boot_upgrade_request_status_t request_status;
+    boot_upgrade_offline_status_t offline_status;
+    uint8_t staged_timeout_fallback;
+    uint8_t enter_boot_requested;
+    uint8_t offline_cleanup_blocked;
+
+    staged_timeout_fallback = 0U;
+    enter_boot_requested = 0U;
+    offline_cleanup_blocked = 0U;
+
     g_boot_reset_reason = boot_reset_reason_read();
 
     if (boot_fwdgt_init() == 0U) {
@@ -662,9 +916,19 @@ int main(void)
 
     systick_config();
     board_led_init();
+
+    boot_upgrade_protocol_init();
+
     __enable_irq();
 
     boot_upgrade_meta_scan_at_startup();
+
+    trial_status = boot_upgrade_trial_startup_process(g_boot_reset_reason);
+
+    if (trial_status == BOOT_UPGRADE_TRIAL_STATUS_META_UPDATE_FAILED)
+    {
+        boot_safe_upgrade_loop();
+    }
 
     if (boot_app_image_check_at_startup() != BOOT_APP_IMAGE_STATUS_OK)
     {
@@ -676,15 +940,93 @@ int main(void)
     */
     boot_upgrade_meta_bootstrap_from_app();
 
+    request_status = boot_upgrade_request_consume();
+    if (request_status == BOOT_UPGRADE_REQUEST_STATUS_CONSUMED)
+    {
+        enter_boot_requested = 1U;
+        boot_upgrade_protocol_send_ready_event();
+    }
+
+    if ((enter_boot_requested == 0U) &&
+        (g_boot_meta_selected.state == FW_STATE_IDLE) &&
+        (g_boot_meta_selected.upgrade_source == UPGRADE_SOURCE_TF_OFFLINE))
+    {
+        offline_status = boot_upgrade_offline_cleanup_process();
+        if (offline_status != BOOT_UPGRADE_OFFLINE_STATUS_CLEANUP_DONE)
+        {
+            /* 无卡/改名失败时仍可启动已确认 App，但禁止新升级覆盖上下文。 */
+            offline_cleanup_blocked = 1U;
+        }
+    }
+
+    if ((enter_boot_requested == 0U) &&
+        (offline_cleanup_blocked == 0U) &&
+        (g_boot_meta_selected.state == FW_STATE_IDLE) &&
+        (g_boot_meta_selected.upgrade_source == UPGRADE_SOURCE_NONE))
+    {
+        offline_status = boot_upgrade_offline_startup_process();
+
+        if (offline_status == BOOT_UPGRADE_OFFLINE_STATUS_INSTALL_STARTED)
+        {
+            /* 离线包已经进入统一 INSTALL，后续不再依赖 TF 卡。 */
+            boot_safe_upgrade_loop();
+        }
+
+        if ((g_boot_meta_selected.state != FW_STATE_IDLE) ||
+            (g_boot_meta_selected.upgrade_source != UPGRADE_SOURCE_NONE))
+        {
+            boot_safe_upgrade_loop();
+        }
+    }
+
+    if ((enter_boot_requested == 0U) &&
+        (offline_cleanup_blocked == 0U) &&
+        (g_boot_meta_selected.state == FW_STATE_STAGED_VALID) &&
+        (g_boot_meta_selected.upgrade_source == UPGRADE_SOURCE_TF_OFFLINE))
+    {
+        install_status = boot_upgrade_install_start();
+        if (install_status == BOOT_UPGRADE_INSTALL_STATUS_OK)
+        {
+            boot_safe_upgrade_loop();
+        }
+
+        if (boot_upgrade_abort_receiving() != BOOT_UPGRADE_META_WRITE_OK)
+        {
+            boot_safe_upgrade_loop();
+        }
+    }
+
     /*
     * 根据当前 Meta 状态决定是否允许进入 App。
     */
     if (boot_meta_startup_state_dispatch() == 0U)
     {
+        if ((g_boot_meta_selected.state == FW_STATE_STAGED_VALID) &&
+            (g_boot_meta_selected.upgrade_source == UPGRADE_SOURCE_ONLINE))
+        {
+            if (boot_staged_valid_wait_and_indicate() == 0U)
+            {
+                boot_safe_upgrade_loop();
+            }
+
+            staged_timeout_fallback = 1U;
+        }
+        else
+        {
+            boot_safe_upgrade_loop();
+        }
+    }
+
+    if ((offline_cleanup_blocked == 0U) &&
+        (staged_timeout_fallback == 0U) &&
+        (boot_wait_and_indicate(
+            (enter_boot_requested != 0U) ?
+            BOOT_ENTER_BOOT_WAIT_SECONDS : BOOT_WAIT_SECONDS) == 0U))
+    {
+        /* BEGIN 已经把 Meta 持久化为 RECEIVING，禁止跳转 App。 */
         boot_safe_upgrade_loop();
     }
 
-    boot_wait_and_indicate();
     boot_jump_to_app();
 
     /* App 跳转失败时停留在 Bootloader。 */
