@@ -3,6 +3,7 @@
 #include "common_crc.h"
 #include "common_flash_layout.h"
 #include "boot_upgrade_staging.h"
+#include "boot_upgrade_indicator.h"
 
 #define BOOT_UPGRADE_DATA_PREFIX_SIZE       8U
 #define BOOT_UPGRADE_DATA_CRC_SIZE          2U
@@ -242,6 +243,22 @@ boot_upgrade_data_status_t boot_upgrade_data_accept(
     /* 所有页段写入和读回校验成功后，才推进接收进度。 */
     g_boot_upgrade_staging_received_length = offset + chunk_length;
     g_boot_upgrade_staging_expected_sequence = (uint16_t)(sequence + 1U);
+
+    if (selected_meta->pending_size != 0U)
+    {
+        uint32_t receive_progress;
+
+        receive_progress =
+            (g_boot_upgrade_staging_received_length * 90U) /
+            selected_meta->pending_size;
+
+        if (receive_progress > 90U)
+        {
+            receive_progress = 90U;
+        }
+
+        boot_upgrade_indicator_set_progress((uint8_t)receive_progress);
+    }
 
     s_last_ack_valid = 1U;
     s_last_sequence = sequence;

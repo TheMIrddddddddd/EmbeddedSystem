@@ -580,10 +580,10 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 - M6-0B～M6-0F 的在线升级、TF 离线升级、外部 GD25Q40E Meta 双槽、启动确认/回滚、Boot→App 跳转、FWDGT 安全等待和错误返回路径已实现。
 - 板级验收已覆盖 N-01～N-04、N-06、N-09、N-10；N-05、N-07、N-08 的随机掉电/改名掉电按本项目决定暂不执行，不能在记录中写成已通过。
 - N-10 已完成闭环：清理阻塞时仍启动有效 App，新的 `ENTER_BOOT` 返回状态错误；恢复 TF 后 `.applied` 清理成功，Meta 回到 `IDLE + UPGRADE_SOURCE_NONE`，后续 `ENTER_BOOT` 和 App 查询恢复正常。
-- Bootloader 当前提供 LED 等待/状态指示，但尚未接入 OLED 升级进度（接收 0%～90%、校验/安装 90%～100%）；该项作为延期项，不作为本次 M6 关闭条件。
+- Bootloader 当前提供 LED 等待/状态指示，并已接入 OLED 横向进度条：接收阶段 0%～90%、END 校验/Meta 提交约 90%～95%、INSTALL 搬运/校验 96%～100%；OLED 初始化或刷新失败时自动降级为 LED，不阻断升级。
 - Keil `IndustrialEmbedded-Boot` 与 `IndustrialEmbedded-App` 工程包含正式构建所需的 M6 源文件。EIDE 的 `IndustrialEmbedded_Boot` 目标仍共享 App 源树，不作为本次发布构建链；正式构建以 Keil AC5 为准。
 - 交付前必须保留 `tools/pack_app_manifest.py`、`tools/pack_offline_firmware.py` 和 `tools/m6_upgrade_host.py`，并排除 `tools/__pycache__/`、`.embeddedskills/` 及其他本地构建产物。
-- 2026-09-15 Keil AC5 全量重建：Boot/App 均为 0 Error、0 Warning；Boot 原始 BIN 为 `0xB964` 字节，App 原始 BIN 为 `0x168C4` 字节；最终 App 映像 CRC32 为 `0xC4DF4B62`，manifest 地址为 `0x08031FC0`，manifest 长度为 20 字节，TF 离线包长度为 `0x168E4` 字节。
+- 2026-09-15 Keil AC5 全量重建：Boot/App 均为 0 Error、0 Warning；接入 OLED 后 Boot 原始 BIN 为 `0xC11C` 字节，App 原始 BIN 为 `0x168C4` 字节；最终 App 映像 CRC32 为 `0xC4DF4B62`，manifest 地址为 `0x08031FC0`，manifest 长度为 20 字节，TF 离线包长度为 `0x168E4` 字节。
 
 ---
 

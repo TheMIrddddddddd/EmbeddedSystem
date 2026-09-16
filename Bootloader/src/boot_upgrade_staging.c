@@ -3,6 +3,7 @@
 #include "common_flash_layout.h"
 #include "gd32f4xx_fwdgt.h"
 #include "boot_upgrade_data.h"
+#include "boot_upgrade_indicator.h"
 
 volatile uint32_t g_boot_upgrade_staging_prepare_page_index;
 volatile uint32_t g_boot_upgrade_staging_prepare_completed_pages;
@@ -23,6 +24,7 @@ board_internal_flash_status_t boot_upgrade_staging_prepare(void)
     g_boot_upgrade_staging_received_length = 0U;
     g_boot_upgrade_staging_expected_sequence = 0U;
     boot_upgrade_data_session_reset();
+    boot_upgrade_indicator_set_progress(0U);
 
     /* STAGING_MANIFEST_ADDR 所在页在这里且只擦除一次。 */
     for (page_index = 0U; page_index < STAGING_PAGE_COUNT; page_index++)

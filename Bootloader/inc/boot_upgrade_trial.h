@@ -24,6 +24,13 @@ boot_upgrade_trial_status_t boot_upgrade_trial_startup_process(
 /* 在安全升级循环中提交 CONFIRMED -> IDLE，或处理确认后的复位。 */
 boot_upgrade_trial_status_t boot_upgrade_trial_process(void);
 
+/*
+ * CONFIRMED 提交成功后置位 RTC 备份标记；
+ * 下一次启动消费该标记，让启动阶段继续显示 100% 进度。
+ */
+void boot_upgrade_trial_commit_flag_set(void);
+uint8_t boot_upgrade_trial_commit_flag_consume(void);
+
 extern volatile boot_upgrade_trial_status_t g_boot_upgrade_trial_status;
 extern volatile common_reset_reason_t g_boot_upgrade_trial_reset_reason;
 extern volatile uint32_t g_boot_upgrade_trial_crash_marker;

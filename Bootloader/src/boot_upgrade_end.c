@@ -6,6 +6,7 @@
 #include "boot_upgrade_context.h"
 #include "boot_upgrade_staging.h"
 #include "boot_upgrade_state.h"
+#include "boot_upgrade_indicator.h"
 
 volatile boot_upgrade_end_status_t g_boot_upgrade_end_status;
 volatile uint32_t g_boot_upgrade_end_calculated_crc32;
@@ -161,6 +162,8 @@ boot_upgrade_end_status_t boot_upgrade_end_accept(void)
         return BOOT_UPGRADE_END_STATUS_STATE_NOT_ALLOWED;
     }
 
+    boot_upgrade_indicator_set_progress(90U);
+
     pending_size = g_boot_meta_selected.pending_size;
     pending_crc32 = g_boot_meta_selected.pending_crc32;
     pending_version = g_boot_meta_selected.pending_version;
@@ -274,5 +277,6 @@ boot_upgrade_end_status_t boot_upgrade_end_accept(void)
 
     g_boot_upgrade_end_cleanup_status = BOOT_UPGRADE_META_WRITE_OK;
     g_boot_upgrade_end_status = BOOT_UPGRADE_END_STATUS_OK;
+    boot_upgrade_indicator_set_progress(95U);
     return BOOT_UPGRADE_END_STATUS_OK;
 }

@@ -16,6 +16,7 @@
 #include "boot_upgrade_staging.h"
 #include "boot_upgrade_state.h"
 #include "boot_upgrade_trial.h"
+#include "boot_upgrade_indicator.h"
 #include "common_reset_contract.h"
 
 #define BOOT_FWDGT_RELOAD      781U
@@ -916,12 +917,34 @@ int main(void)
 
     systick_config();
     board_led_init();
+    boot_upgrade_indicator_init();
 
     boot_upgrade_protocol_init();
 
     __enable_irq();
 
     boot_upgrade_meta_scan_at_startup();
+
+    /*
+     * 安装完成后的两次启动（试运行 TRIAL_PENDING / 已确认 CONFIRMED）
+     * 保持满进度显示：复位后如果重新画空进度条，会让人误判为没有升级。
+     */
+    if (((g_boot_meta_scan_status == BOOT_UPGRADE_META_SELECT_OK) ||
+         (g_boot_meta_scan_status == BOOT_UPGRADE_META_SELECT_OK_DEGRADED)) &&
+        ((g_boot_meta_selected.state == FW_STATE_TRIAL_PENDING) ||
+         (g_boot_meta_selected.state == FW_STATE_CONFIRMED)))
+    {
+        boot_upgrade_indicator_set_progress(100U);
+    }
+
+    /*
+     * CONFIRMED 提交后会立刻复位；消费提交标记让这次启动
+     * 同样保持 100%，升级后不再出现最后一段空进度条。
+     */
+    if (boot_upgrade_trial_commit_flag_consume() != 0U)
+    {
+        boot_upgrade_indicator_set_progress(100U);
+    }
 
     trial_status = boot_upgrade_trial_startup_process(g_boot_reset_reason);
 

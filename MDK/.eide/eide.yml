@@ -96,6 +96,8 @@ virtualFolder:
           files:
             - path: ../Bootloader/src/boot_upgrade_meta.c
             - path: ../Bootloader/inc/boot_upgrade_meta.h
+            - path: ../Bootloader/src/boot_upgrade_indicator.c
+            - path: ../Bootloader/inc/boot_upgrade_indicator.h
           folders: []
     - name: App
       files: []

@@ -14,6 +14,12 @@
 
 #define BOOT_UPGRADE_TRIAL_FAILURE_LIMIT 3U
 
+/*
+ * CONFIRMED 提交成功后写入 RTC_BKP2；
+ * 复位后的那次启动消费该标记，保持满进度显示。
+ */
+#define BOOT_UPGRADE_TRIAL_COMMIT_FLAG 0x00004D36UL
+
 volatile boot_upgrade_trial_status_t g_boot_upgrade_trial_status =
     BOOT_UPGRADE_TRIAL_STATUS_NO_ACTION;
 volatile common_reset_reason_t g_boot_upgrade_trial_reset_reason =
@@ -62,6 +68,36 @@ static void boot_upgrade_trial_crash_marker_read(void)
 static void boot_upgrade_trial_crash_marker_clear(void)
 {
     RTC_BKP1 = 0U;
+}
+
+static void boot_upgrade_trial_backup_domain_prepare(void)
+{
+    rcu_periph_clock_enable(RCU_PMU);
+    pmu_backup_write_enable();
+    rcu_periph_clock_enable(RCU_RTC);
+}
+
+void boot_upgrade_trial_commit_flag_set(void)
+{
+    boot_upgrade_trial_backup_domain_prepare();
+    RTC_BKP2 = BOOT_UPGRADE_TRIAL_COMMIT_FLAG;
+}
+
+uint8_t boot_upgrade_trial_commit_flag_consume(void)
+{
+    uint8_t flag_present;
+
+    boot_upgrade_trial_backup_domain_prepare();
+
+    flag_present =
+        (RTC_BKP2 == BOOT_UPGRADE_TRIAL_COMMIT_FLAG) ? 1U : 0U;
+
+    if (flag_present != 0U)
+    {
+        RTC_BKP2 = 0U;
+    }
+
+    return flag_present;
 }
 
 static boot_upgrade_trial_status_t boot_upgrade_trial_meta_commit(
@@ -333,7 +369,11 @@ static boot_upgrade_trial_status_t boot_upgrade_trial_confirmed_commit(void)
         BOOT_UPGRADE_TRIAL_STATUS_CONFIRMED_COMMITTED;
     fwdgt_counter_reload();
 
-    /* 提交完成后重新启动，统一从 IDLE 路径启动已确认 App。 */
+    /*
+     * 提交完成后重新启动，统一从 IDLE 路径启动已确认 App。
+     * 复位前留下标记，让下一次启动继续显示 100% 进度。
+     */
+    boot_upgrade_trial_commit_flag_set();
     NVIC_SystemReset();
 
     return BOOT_UPGRADE_TRIAL_STATUS_CONFIRMED_COMMITTED;

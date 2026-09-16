@@ -5,6 +5,7 @@
 #include "gd32f4xx_fwdgt.h"
 
 #include "boot_upgrade_context.h"
+#include "boot_upgrade_indicator.h"
 
 #define BOOT_UPGRADE_INSTALL_COPY_CHUNK_SIZE   256U
 #define BOOT_UPGRADE_INSTALL_CRC_FEED_INTERVAL 0x1000U
@@ -38,6 +39,13 @@ static void boot_upgrade_install_set_status(
     g_boot_upgrade_install_status = status;
     g_boot_upgrade_install_stage =
         (install_stage_t)g_boot_meta_selected.install_stage;
+
+    if (g_boot_meta_selected.state == FW_STATE_INSTALLING)
+    {
+        boot_upgrade_indicator_set_install_stage(
+            g_boot_upgrade_install_stage
+        );
+    }
 }
 
 static uint8_t boot_upgrade_install_meta_context_valid(void)

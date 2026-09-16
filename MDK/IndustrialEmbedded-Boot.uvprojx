@@ -565,6 +565,16 @@
               <FilePath>..\BSP\board_gpio.c</FilePath>
             </File>
             <File>
+              <FileName>board_i2c.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_i2c.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_oled.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\board_oled.c</FilePath>
+            </File>
+            <File>
               <FileName>board_usart.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BSP\board_usart.c</FilePath>
@@ -655,6 +665,11 @@
               <FilePath>..\Bootloader\src\boot_upgrade_meta.c</FilePath>
             </File>
             <File>
+              <FileName>boot_upgrade_indicator.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_indicator.c</FilePath>
+            </File>
+            <File>
               <FileName>boot_app_image.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Bootloader\src\boot_app_image.c</FilePath>
@@ -708,6 +723,11 @@
               <FileName>boot_upgrade_context.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Bootloader\inc\boot_upgrade_context.h</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_indicator.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_indicator.h</FilePath>
             </File>
             <File>
               <FileName>boot_upgrade_end.h</FileName>
