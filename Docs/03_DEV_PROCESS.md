@@ -3,7 +3,7 @@
 > 文档版本:V1.0 | 日期:2026-08-09
 > 定位:本文是《01_PROJECT_OVERVIEW.md》第十五章 M0~M7 里程碑的**执行级展开**——把每个里程碑翻译成「动作清单 → 产出文件 → 依赖 → 卡点 → 验收关卡」。
 > 使用方式:开发时照表执行,验收时对照《01》第十四章(A-01~Q-02)与第十四-2(稳定性)逐条验证;技术原理见《02_TECH_STACK.md》。
-> 当前工程状态:M0~M3 已完成;M4 采集与通信阶段已完成 M4-0~M4-6——采样滤波换算、USART0 CLI 全量、RTC 日历、RS485 自定义协议全量(含自动上报与心跳)、Modbus RTU 从站及 Python 回归均已完成板测;当前进入 M5 TF 卡与告警。
+> 当前工程状态:M0~M6 核心功能已完成（M6 按选定范围交付）;M7 低功耗与总验收不纳入本次项目结项。因实习求职安排,项目在 M6 后进入最终阶段,暂停新增开发与测试;未执行项按下方“项目结项声明”记录。
 
 ---
 
@@ -561,7 +561,7 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 
 1. 五阶段在线升级:0x0500 ENTER_BOOT(仅 APP)/ 0x0501 BEGIN / 0x0502 DATA(先写后 ACK)/ 0x0503 END / 0x0504 INSTALL,命令职责表与状态机命令限制照《01》十二-4;
 2. TF 离线升级:统一暂存流程(staging_prepare → 剥头复制 → 校验 → 生成 manifest → STAGED_VALID → 共用 INSTALL)+ 失败包 `.failed` 隔离 + 成功包 `.applied` 幂等改名(《01》十二-6/9);
-3. 双槽元数据(存 GD25Q40E 固定元数据槽 A/B:68B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽或外部 SPI 不可用时按 App/Backup manifest 恢复;《01》十二-10),槽地址由 M6 在本阶段先冻结;
+3. 双槽元数据(存 GD25Q40E 固定元数据槽 A/B:72B 固定序列化、双槽轮换、commit_marker 原子提交、无有效槽或外部 SPI 不可用时按 App/Backup manifest 恢复;《01》十二-10),槽地址由 M6 在本阶段先冻结;
 4. 启动确认:TRIAL_PENDING → APP 满足五条件写 CONFIRMED;IWDG/HardFault 失败计数 ≥3 回滚;crash_marker 统一消费(《01》十二-5/9);
 5. OLED 升级进度(0~90% 接收 / 90~100% 校验搬运)+ LED 状态/进度指示(裸机 1ms 时基,无软件 PWM;《01》十一-4/5/6);
 6. 跳转 App 10 步序列与 FWDGT 接管(《01》十二-8、十六-4)。
@@ -575,9 +575,28 @@ MDK 双工程(或 Boot/App 两个 .uvprojx 与 EIDE 工程)
 - 外部 GD25Q40E 元数据槽必须使用其 4KB sector 擦除/编程/读回流程;内部 Flash 若保留其他 4KB 数据页,才适用 `fmc_page_erase()`(《01》十二-11);
 - 大块擦写循环中喂狗;Bootloader 长等待不能复位(《01》十六-4)。
 
+#### M6 当前交付状态（2026-09-15）
+
+- M6-0B～M6-0F 的在线升级、TF 离线升级、外部 GD25Q40E Meta 双槽、启动确认/回滚、Boot→App 跳转、FWDGT 安全等待和错误返回路径已实现。
+- 板级验收已覆盖 N-01～N-04、N-06、N-09、N-10；N-05、N-07、N-08 的随机掉电/改名掉电按本项目决定暂不执行，不能在记录中写成已通过。
+- N-10 已完成闭环：清理阻塞时仍启动有效 App，新的 `ENTER_BOOT` 返回状态错误；恢复 TF 后 `.applied` 清理成功，Meta 回到 `IDLE + UPGRADE_SOURCE_NONE`，后续 `ENTER_BOOT` 和 App 查询恢复正常。
+- Bootloader 当前提供 LED 等待/状态指示，并已接入 OLED 横向进度条：接收阶段 0%～90%、END 校验/Meta 提交约 90%～95%、INSTALL 搬运/校验 96%～100%；OLED 初始化或刷新失败时自动降级为 LED，不阻断升级。
+- Keil `IndustrialEmbedded-Boot` 与 `IndustrialEmbedded-App` 工程包含正式构建所需的 M6 源文件。EIDE 的 `IndustrialEmbedded_Boot` 目标仍共享 App 源树，不作为本次发布构建链；正式构建以 Keil AC5 为准。
+- 交付前必须保留 `tools/pack_app_manifest.py`、`tools/pack_offline_firmware.py` 和 `tools/m6_upgrade_host.py`，并排除 `tools/__pycache__/`、`.embeddedskills/` 及其他本地构建产物。
+- 2026-09-15 Keil AC5 全量重建：Boot/App 均为 0 Error、0 Warning；接入 OLED 后 Boot 原始 BIN 为 `0xC11C` 字节，App 原始 BIN 为 `0x168C4` 字节；最终 App 映像 CRC32 为 `0xC4DF4B62`，manifest 地址为 `0x08031FC0`，manifest 长度为 20 字节，TF 离线包长度为 `0x168E4` 字节。
+
 ---
 
-## 十、M7:低功耗与总验收
+#### 项目结项声明（2026-09-16）
+
+- 因实习求职安排,本项目在 M6 完成后进入最终阶段；从本声明起暂停新增功能开发和新的测试工作,不继续实现 M7。
+- 当前项目交付范围为 M0～M6 中已经实现且已有源码、构建或板级证据的内容。M6 的 N-05、N-07、N-08 随机掉电/改名掉电按项目决定不执行,不得写成已通过。
+- M7 的低功耗睡眠/唤醒、`0x03AA` 睡眠链路、24 小时稳定性、100 个错误帧压力、全量掉电矩阵等均保留为后续扩展,不属于当前结项成果。
+- 后续若恢复开发,应从 M7 低功耗闭环和总验收开始;本次结项不以“全部 M0～M7 完成”作为项目声明。
+
+## 十、M7:低功耗与总验收（暂缓，不纳入本次项目结项）
+
+> 状态说明:以下仍是原定后续计划,不代表当前已经实现或验收通过。
 
 **目标:** 睡眠/唤醒闭环 + 全量回归,不新增功能。
 

@@ -38,6 +38,10 @@ OF SUCH DAMAGE.
 #include "board_sdio.h"
 #include "board_adc.h"
 #include "board_timebase.h"
+#include "gd32f4xx_pmu.h"
+#include "gd32f4xx_rcu.h"
+#include "gd32f4xx_rtc.h"
+#include "common_crash_marker.h"
 
 /*!
     \brief      this function handles NMI exception
@@ -60,8 +64,13 @@ void NMI_Handler(void)
 */
 void HardFault_Handler(void)
 {
-    /* if Hard Fault exception occurs, go to infinite loop */
-    while(1) {
+    rcu_periph_clock_enable(RCU_PMU);
+    pmu_backup_write_enable();
+    rcu_periph_clock_enable(RCU_RTC);
+    RTC_BKP1 = COMMON_CRASH_MARKER_MAGIC;
+    NVIC_SystemReset();
+
+    for (;;) {
     }
 }
 

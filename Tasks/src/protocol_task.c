@@ -767,7 +767,7 @@ static void protocol_process_frame(const protocol_frame_t *frame)
     protocol_send_result(frame, &result);
     protocol_apply_custom_result(&result);
 
-    /* 0x0101：应答已发完（TC 等待在 BSP 里），留缓冲后复位 */
+    /* 0x0101/0x0500：应答已发完（TC 等待在 BSP 里），留缓冲后复位 */
     if (app_protocol_reboot_pending() != 0U)
     {
         vTaskDelay(pdMS_TO_TICKS(100U));

@@ -320,6 +320,7 @@ static upgrade_meta_t make_valid_upgrade_meta(void)
     meta.pending_version = 0x01010000UL;
     meta.failed_package_crc32 = 0x44444444UL;
     meta.failed_package_version = 0x00080000UL;
+    meta.request = UPGRADE_META_REQUEST_ENTER_BOOT;
     meta.commit_marker = UPGRADE_META_COMMIT_MARKER;
 
     return meta;
@@ -347,6 +348,7 @@ void test_upgrade_meta_encode_decode_roundtrip(void)
     TEST_ASSERT_EQUAL_UINT8(expected.install_stage, actual.install_stage);
     TEST_ASSERT_EQUAL_UINT8(expected.failure_count, actual.failure_count);
     TEST_ASSERT_EQUAL_UINT8(expected.upgrade_source, actual.upgrade_source);
+    TEST_ASSERT_EQUAL_UINT32(expected.request, actual.request);
     TEST_ASSERT_EQUAL_UINT32(expected.active_size, actual.active_size);
     TEST_ASSERT_EQUAL_UINT32(expected.active_crc32, actual.active_crc32);
     TEST_ASSERT_EQUAL_UINT32(expected.pending_version,
@@ -374,6 +376,14 @@ void test_upgrade_meta_uses_fixed_little_endian_layout(void)
     TEST_ASSERT_EQUAL_UINT8(FW_STATE_TRIAL_PENDING, buffer[12]);
     TEST_ASSERT_EQUAL_UINT8(INSTALL_APP_VALID, buffer[13]);
     TEST_ASSERT_EQUAL_UINT8(UPGRADE_SOURCE_ONLINE, buffer[15]);
+    TEST_ASSERT_EQUAL_UINT8(0x01U, buffer[UPGRADE_META_REQUEST_OFFSET]);
+    TEST_ASSERT_EQUAL_UINT8(0x00U, buffer[UPGRADE_META_REQUEST_OFFSET + 1U]);
+    TEST_ASSERT_EQUAL_UINT8(0x00U, buffer[UPGRADE_META_REQUEST_OFFSET + 2U]);
+    TEST_ASSERT_EQUAL_UINT8(0x00U, buffer[UPGRADE_META_REQUEST_OFFSET + 3U]);
+    TEST_ASSERT_EQUAL_UINT8(0xA5U, buffer[UPGRADE_META_COMMIT_MARKER_OFFSET]);
+    TEST_ASSERT_EQUAL_UINT8(0xC3U, buffer[UPGRADE_META_COMMIT_MARKER_OFFSET + 1U]);
+    TEST_ASSERT_EQUAL_UINT8(0xC3U, buffer[UPGRADE_META_COMMIT_MARKER_OFFSET + 2U]);
+    TEST_ASSERT_EQUAL_UINT8(0xA5U, buffer[UPGRADE_META_COMMIT_MARKER_OFFSET + 3U]);
 }
 
 void test_upgrade_meta_rejects_invalid_arguments(void)
@@ -448,6 +458,13 @@ void test_upgrade_meta_rejects_invalid_fields(void)
                                           sizeof(buffer)));
 
     meta = make_valid_upgrade_meta();
+    meta.request = UPGRADE_META_REQUEST_ENTER_BOOT + 1U;
+    TEST_ASSERT_EQUAL(FW_FORMAT_STATUS_INVALID_FIELD,
+                      upgrade_meta_encode(&meta,
+                                          buffer,
+                                          sizeof(buffer)));
+
+    meta = make_valid_upgrade_meta();
     meta.commit_marker = 0U;
     TEST_ASSERT_EQUAL(FW_FORMAT_STATUS_INVALID_FIELD,
                       upgrade_meta_encode(&meta,
@@ -483,7 +500,7 @@ void test_upgrade_meta_rejects_invalid_commit_marker(void)
                       upgrade_meta_encode(&meta,
                                           buffer,
                                           sizeof(buffer)));
-    buffer[64] ^= 0x01U;
+    buffer[UPGRADE_META_COMMIT_MARKER_OFFSET] ^= 0x01U;
 
     TEST_ASSERT_EQUAL(FW_FORMAT_STATUS_INVALID_FIELD,
                       upgrade_meta_decode(buffer,

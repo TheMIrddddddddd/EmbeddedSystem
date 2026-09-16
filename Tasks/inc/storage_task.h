@@ -151,6 +151,28 @@ typedef enum
     STORAGE_TASK_PERSIST_STATUS_DATA_ERROR
 } storage_task_persist_status_t;
 
+typedef enum
+{
+    STORAGE_TASK_UPGRADE_CONFIRM_IDLE = 0,
+    STORAGE_TASK_UPGRADE_CONFIRM_PENDING,
+    STORAGE_TASK_UPGRADE_CONFIRM_OK,
+    STORAGE_TASK_UPGRADE_CONFIRM_NO_ACTION,
+    STORAGE_TASK_UPGRADE_CONFIRM_FAILED
+} storage_task_upgrade_confirm_status_t;
+
+typedef enum
+{
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_IDLE = 0,
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_PENDING,
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_OK,
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_TF_CLEANUP_PENDING,
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_STATE_NOT_ALLOWED,
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_META_SELECT_FAILED,
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_META_UPDATE_FAILED,
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_BUSY,
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_TIMEOUT
+} storage_task_upgrade_enter_boot_status_t;
+
 #define STORAGE_TASK_PERSIST_ORIGIN_BOOT     1U
 #define STORAGE_TASK_PERSIST_ORIGIN_CONTROL  2U
 #define STORAGE_TASK_PERSIST_ORIGIN_ALARM    3U
@@ -194,6 +216,12 @@ int storage_task_persist_request_submit(
 int storage_task_config_import_submit(uint32_t request_id,
                                       uint32_t deadline_tick,
                                       uint8_t origin);
+int storage_task_upgrade_confirm_request(void);
+storage_task_upgrade_confirm_status_t
+storage_task_upgrade_confirm_status_get(void);
+/* 在 StorageTask 上下文完成一次同步的 ENTER_BOOT 元数据提交。 */
+storage_task_upgrade_enter_boot_status_t
+storage_task_upgrade_enter_boot_request_execute(uint32_t timeout_ms);
 int storage_task_persist_result_get(
     storage_task_persist_result_t *result,
     uint32_t timeout_ms);

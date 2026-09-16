@@ -277,7 +277,7 @@
               <OCR_RVCT4>
                 <Type>1</Type>
                 <StartAddress>0x8012000</StartAddress>
-                <Size>0x20000</Size>
+                <Size>0x1ffc0</Size>
               </OCR_RVCT4>
               <OCR_RVCT5>
                 <Type>1</Type>
@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_STDPERIPH_DRIVER,GD32F470,NDEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App\inc;..\BSP;..\Middleware;..\Common\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config;..\Tasks\inc;..\Middleware\Ebtn\inc;..\Middleware\FatFs\inc</IncludePath>
+              <IncludePath>..\Driver\CMSIS\GD\GD32F4xx\Include;..\Driver\CMSIS;..\Libraries\Include;..\App\inc;..\BSP;..\Middleware;..\Common\inc;..\Bootloader\inc;..\Middleware\Ringbuffer\inc;..\Middleware\Protocol\inc;..\Middleware\CLI\inc;..\Middleware\FlashKV\inc;..\Middleware\FreeRTOS\Kernel\include;..\Middleware\FreeRTOS\Kernel\portable\RVDS\ARM_CM4F;..\App\config;..\Tasks\inc;..\Middleware\Ebtn\inc;..\Middleware\FatFs\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -719,6 +719,26 @@
               <FileType>5</FileType>
               <FilePath>..\Common\inc\common_reset_contract.h</FilePath>
             </File>
+            <File>
+              <FileName>common_crash_marker.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Common\inc\common_crash_marker.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Bootloader/shared</GroupName>
+          <Files>
+            <File>
+              <FileName>boot_upgrade_meta.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Bootloader\src\boot_upgrade_meta.c</FilePath>
+            </File>
+            <File>
+              <FileName>boot_upgrade_meta.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Bootloader\inc\boot_upgrade_meta.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -728,6 +748,26 @@
               <FileName>app_main.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\src\app_main.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_upgrade_confirm.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\app_upgrade_confirm.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_upgrade_enter_boot.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\src\app_upgrade_enter_boot.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_upgrade_enter_boot.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\App\inc\app_upgrade_enter_boot.h</FilePath>
+            </File>
+            <File>
+              <FileName>app_upgrade_confirm.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\App\inc\app_upgrade_confirm.h</FilePath>
             </File>
             <File>
               <FileName>gd32f4xx_it.c</FileName>

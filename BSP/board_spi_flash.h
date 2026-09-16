@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+typedef void (*board_spi_flash_wait_hook_t)(void);
+
 int board_spi_flash_init(void);
 int board_spi_flash_reset(void);
 void board_spi_flash_cs_low(void);
@@ -17,5 +19,7 @@ int board_spi_flash_page_program(uint32_t address, const uint8_t *data, uint32_t
 int board_spi_flash_read(uint32_t address, uint8_t *data, uint32_t length);
 int board_spi_flash_wait_ready(void);
 int board_spi_flash_sector_erase(uint32_t address);
+
+void board_spi_flash_set_wait_hook(board_spi_flash_wait_hook_t hook);
 
 #endif /* BOARD_SPI_FLASH_H */

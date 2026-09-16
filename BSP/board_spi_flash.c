@@ -1,11 +1,20 @@
 #include "board_spi_flash.h"
+#include "board_config.h"
+#include "common_flash_layout.h"
 
 #include "gd32f4xx.h"
 #include "gd32f4xx_gpio.h"
 #include "gd32f4xx_rcu.h"
 #include "gd32f4xx_spi.h"
 
-#include "board_config.h"
+
+
+static board_spi_flash_wait_hook_t s_board_spi_flash_wait_hook;
+
+void board_spi_flash_set_wait_hook(board_spi_flash_wait_hook_t hook)
+{
+    s_board_spi_flash_wait_hook = hook;
+}
 
 void board_spi_flash_cs_high(void)
 {
@@ -158,6 +167,11 @@ int board_spi_flash_wait_ready(void)
             return 1;
         }
 
+        if ((s_board_spi_flash_wait_hook != 0) && ((timeout & 0x3FFU) == 0U))
+        {
+            s_board_spi_flash_wait_hook();
+        }
+
         timeout--;
     } while (timeout > 0U);
 
@@ -166,7 +180,7 @@ int board_spi_flash_wait_ready(void)
 
 int board_spi_flash_sector_erase(uint32_t address)
 {
-    if (address >= 0x80000U)
+    if ((address >= GD25Q40E_CAPACITY) || ((address % GD25Q40E_SECTOR_SIZE) != 0U))
     {
         return 0;
     }
@@ -193,6 +207,11 @@ int board_spi_flash_page_program(uint32_t address, const uint8_t* data, uint32_t
     uint32_t index;
 
     if ((data == 0U) || (length == 0U) || (length > 256U))
+    {
+        return 0;
+    }
+
+    if (((uint64_t)address + (uint64_t)length) > GD25Q40E_CAPACITY)
     {
         return 0;
     }
@@ -228,7 +247,7 @@ int board_spi_flash_read(uint32_t address, uint8_t *data, uint32_t length)
 {
     uint32_t index;
 
-    if (((uint64_t)address + length) > 0x80000U)
+    if (((uint64_t)address + (uint64_t)length) > GD25Q40E_CAPACITY)
     {
         return 0;
     }

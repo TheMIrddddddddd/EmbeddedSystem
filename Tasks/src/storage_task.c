@@ -16,6 +16,8 @@
 #include "ff.h"
 #include "app_config_import.h"
 #include "app_config_ini.h"
+#include "app_upgrade_confirm.h"
+#include "app_upgrade_enter_boot.h"
 #include "storage_record_format.h"
 #include "storage_mount_policy.h"
 
@@ -113,6 +115,13 @@ static storage_task_persist_result_t s_storage_persist_result;
 static uint32_t s_storage_alarm_rpc_next_request_id;
 static uint8_t s_storage_config_file[APP_CONFIG_INI_FILE_MAX + 1U];
 static uint8_t s_storage_config_encoded[APP_CONFIG_SERIALIZED_SIZE];
+static volatile uint8_t s_storage_upgrade_confirm_requested;
+static volatile storage_task_upgrade_confirm_status_t
+    s_storage_upgrade_confirm_status = STORAGE_TASK_UPGRADE_CONFIRM_IDLE;
+static volatile uint8_t s_storage_upgrade_enter_boot_requested;
+static volatile storage_task_upgrade_enter_boot_status_t
+    s_storage_upgrade_enter_boot_status =
+    STORAGE_TASK_UPGRADE_ENTER_BOOT_IDLE;
 
 typedef struct
 {
@@ -158,6 +167,8 @@ static int storage_task_audit_open(uint8_t write_boot_line);
 static void storage_task_record_setup_after_mount(uint8_t write_boot_line);
 static int storage_task_audit_write_boot_line(void);
 static void storage_task_process_alarm_rpc_request(void);
+static void storage_task_process_upgrade_confirm(void);
+static void storage_task_process_upgrade_enter_boot(void);
 static int storage_task_fatfs_space_refresh(void);
 static void storage_task_fatfs_mark_degraded(void);
 static int storage_task_fatfs_recover_for_retry(
@@ -1700,6 +1711,89 @@ static void storage_task_process_persist_request(void)
     (void)storage_persist_result_send(&s_storage_persist_result);
 }
 
+static void storage_task_process_upgrade_confirm(void)
+{
+    app_upgrade_confirm_status_t confirm_status;
+
+    if (s_storage_upgrade_confirm_requested == 0U)
+    {
+        return;
+    }
+
+    s_storage_upgrade_confirm_requested = 0U;
+    confirm_status = app_upgrade_confirm_execute();
+
+    if (confirm_status == APP_UPGRADE_CONFIRM_STATUS_OK)
+    {
+        s_storage_upgrade_confirm_status =
+            STORAGE_TASK_UPGRADE_CONFIRM_OK;
+    }
+    else if (confirm_status == APP_UPGRADE_CONFIRM_STATUS_NO_ACTION)
+    {
+        s_storage_upgrade_confirm_status =
+            STORAGE_TASK_UPGRADE_CONFIRM_NO_ACTION;
+    }
+    else if ((confirm_status == APP_UPGRADE_CONFIRM_STATUS_META_SELECT_FAILED) &&
+             (g_app_upgrade_confirm_trial_detected == 0U))
+    {
+        /* 普通 App 或外部 Meta 不可读时，不把未知状态当作试运行失败。 */
+        s_storage_upgrade_confirm_status =
+            STORAGE_TASK_UPGRADE_CONFIRM_NO_ACTION;
+    }
+    else
+    {
+        s_storage_upgrade_confirm_status =
+            STORAGE_TASK_UPGRADE_CONFIRM_FAILED;
+    }
+}
+
+static void storage_task_process_upgrade_enter_boot(void)
+{
+    app_upgrade_enter_boot_status_t enter_boot_status;
+
+    if (s_storage_upgrade_enter_boot_requested == 0U)
+    {
+        return;
+    }
+
+    s_storage_upgrade_enter_boot_requested = 0U;
+    enter_boot_status = app_upgrade_enter_boot_execute();
+
+    switch (enter_boot_status)
+    {
+    case APP_UPGRADE_ENTER_BOOT_STATUS_OK:
+        s_storage_upgrade_enter_boot_status =
+            STORAGE_TASK_UPGRADE_ENTER_BOOT_OK;
+        break;
+
+    case APP_UPGRADE_ENTER_BOOT_STATUS_TF_CLEANUP_PENDING:
+        s_storage_upgrade_enter_boot_status =
+            STORAGE_TASK_UPGRADE_ENTER_BOOT_TF_CLEANUP_PENDING;
+        break;
+
+    case APP_UPGRADE_ENTER_BOOT_STATUS_STATE_NOT_ALLOWED:
+        s_storage_upgrade_enter_boot_status =
+            STORAGE_TASK_UPGRADE_ENTER_BOOT_STATE_NOT_ALLOWED;
+        break;
+
+    case APP_UPGRADE_ENTER_BOOT_STATUS_META_SELECT_FAILED:
+        s_storage_upgrade_enter_boot_status =
+            STORAGE_TASK_UPGRADE_ENTER_BOOT_META_SELECT_FAILED;
+        break;
+
+    case APP_UPGRADE_ENTER_BOOT_STATUS_META_UPDATE_FAILED:
+        s_storage_upgrade_enter_boot_status =
+            STORAGE_TASK_UPGRADE_ENTER_BOOT_META_UPDATE_FAILED;
+        break;
+
+    case APP_UPGRADE_ENTER_BOOT_STATUS_INVALID_ARGUMENT:
+    default:
+        s_storage_upgrade_enter_boot_status =
+            STORAGE_TASK_UPGRADE_ENTER_BOOT_META_UPDATE_FAILED;
+        break;
+    }
+}
+
 static void storage_task_publish_config_load(void)
 {
     static storage_task_persist_request_t request;
@@ -1762,6 +1856,8 @@ static void storage_task(void *argument)
         storage_task_process_request();
         storage_task_process_file_request();
         storage_task_process_persist_request();
+        storage_task_process_upgrade_enter_boot();
+        storage_task_process_upgrade_confirm();
         storage_task_process_record_request();
         storage_task_process_alarm_rpc_request();
 
@@ -1786,6 +1882,11 @@ int storage_task_create(void)
     s_storage_audit_boot_written = 0U;
     s_storage_fatfs_full = 0U;
     s_storage_fatfs_write_degraded = 0U;
+    s_storage_upgrade_confirm_requested = 0U;
+    s_storage_upgrade_confirm_status = STORAGE_TASK_UPGRADE_CONFIRM_IDLE;
+    s_storage_upgrade_enter_boot_requested = 0U;
+    s_storage_upgrade_enter_boot_status =
+        STORAGE_TASK_UPGRADE_ENTER_BOOT_IDLE;
 
     s_storage_request_queue_handle = xQueueCreateStatic(
         STORAGE_TASK_REQUEST_QUEUE_LENGTH,
@@ -2055,6 +2156,90 @@ int storage_task_config_import_submit(uint32_t request_id,
     request.operation = STORAGE_TASK_PERSIST_CONFIG_IMPORT;
     request.origin = origin;
     return storage_task_persist_request_submit(&request);
+}
+
+int storage_task_upgrade_confirm_request(void)
+{
+    taskENTER_CRITICAL();
+
+    if (s_storage_upgrade_confirm_status ==
+        STORAGE_TASK_UPGRADE_CONFIRM_PENDING)
+    {
+        taskEXIT_CRITICAL();
+        return 0;
+    }
+
+    s_storage_upgrade_confirm_requested = 1U;
+    s_storage_upgrade_confirm_status =
+        STORAGE_TASK_UPGRADE_CONFIRM_PENDING;
+
+    taskEXIT_CRITICAL();
+    return 1;
+}
+
+storage_task_upgrade_confirm_status_t
+storage_task_upgrade_confirm_status_get(void)
+{
+    return s_storage_upgrade_confirm_status;
+}
+
+storage_task_upgrade_enter_boot_status_t
+storage_task_upgrade_enter_boot_request_execute(uint32_t timeout_ms)
+{
+    TickType_t deadline;
+    TickType_t now;
+
+    if ((s_storage_task_handle == NULL) ||
+        (timeout_ms == 0U))
+    {
+        return STORAGE_TASK_UPGRADE_ENTER_BOOT_BUSY;
+    }
+
+    taskENTER_CRITICAL();
+
+    if (s_storage_upgrade_enter_boot_status ==
+        STORAGE_TASK_UPGRADE_ENTER_BOOT_PENDING)
+    {
+        taskEXIT_CRITICAL();
+        return STORAGE_TASK_UPGRADE_ENTER_BOOT_BUSY;
+    }
+
+    s_storage_upgrade_enter_boot_requested = 1U;
+    s_storage_upgrade_enter_boot_status =
+        STORAGE_TASK_UPGRADE_ENTER_BOOT_PENDING;
+
+    taskEXIT_CRITICAL();
+
+    deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+
+    for (;;)
+    {
+        now = xTaskGetTickCount();
+
+        if (s_storage_upgrade_enter_boot_status !=
+            STORAGE_TASK_UPGRADE_ENTER_BOOT_PENDING)
+        {
+            return s_storage_upgrade_enter_boot_status;
+        }
+
+        if ((int32_t)(deadline - now) <= 0)
+        {
+            taskENTER_CRITICAL();
+
+            if (s_storage_upgrade_enter_boot_status ==
+                STORAGE_TASK_UPGRADE_ENTER_BOOT_PENDING)
+            {
+                s_storage_upgrade_enter_boot_requested = 0U;
+                s_storage_upgrade_enter_boot_status =
+                    STORAGE_TASK_UPGRADE_ENTER_BOOT_TIMEOUT;
+            }
+
+            taskEXIT_CRITICAL();
+            return STORAGE_TASK_UPGRADE_ENTER_BOOT_TIMEOUT;
+        }
+
+        vTaskDelay(1U);
+    }
 }
 
 int storage_task_persist_result_get(
