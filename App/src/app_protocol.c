@@ -19,7 +19,7 @@
 #define APP_PROTOCOL_VERSION_MAJOR          0x00U
 #define APP_PROTOCOL_VERSION_MINOR          0x01U
 #define APP_PROTOCOL_VERSION_REVISION       0x00U
-#define APP_PROTOCOL_VERSION_BUILD          0x01U
+#define APP_PROTOCOL_VERSION_BUILD          0x02U
 
 /* 本实现覆盖的命令字（M4-4c；0x03xx 上报类归 M4-4d，0x05xx/0x06xx 归 M6/M5） */
 #define APP_PROTOCOL_CMD_REBOOT             0x0101U
@@ -220,6 +220,38 @@ void app_protocol_execute(const protocol_request_t *request, protocol_result_t *
 
     switch (operation)
     {
+    case APP_PROTOCOL_CMD_ENTER_BOOT:
+        if (payload_length != 0U)
+        {
+            result->status = APP_PROTOCOL_ERROR_LENGTH;
+            break;
+        }
+
+        switch (storage_task_upgrade_enter_boot_request_execute(400U))
+        {
+        case STORAGE_TASK_UPGRADE_ENTER_BOOT_OK:
+            /* ProtocolTask 在应答完整发出后执行软件复位。 */
+            s_reboot_pending = 1U;
+            break;
+
+        case STORAGE_TASK_UPGRADE_ENTER_BOOT_TF_CLEANUP_PENDING:
+        case STORAGE_TASK_UPGRADE_ENTER_BOOT_STATE_NOT_ALLOWED:
+            result->status = APP_PROTOCOL_ERROR_UPGRADE_STATE;
+            break;
+
+        case STORAGE_TASK_UPGRADE_ENTER_BOOT_META_SELECT_FAILED:
+        case STORAGE_TASK_UPGRADE_ENTER_BOOT_META_UPDATE_FAILED:
+            result->status = APP_PROTOCOL_ERROR_UPGRADE_STORAGE;
+            break;
+
+        case STORAGE_TASK_UPGRADE_ENTER_BOOT_BUSY:
+        case STORAGE_TASK_UPGRADE_ENTER_BOOT_TIMEOUT:
+        default:
+            result->status = APP_PROTOCOL_ERROR_BUSY;
+            break;
+        }
+        break;
+
     case APP_PROTOCOL_CMD_REBOOT:
         /* 应答帧发出后 ProtocolTask 执行复位 */
         s_reboot_pending = 1U;

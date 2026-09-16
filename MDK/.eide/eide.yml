@@ -87,13 +87,28 @@ virtualFolder:
         - path: ../Common/inc/common_flash_layout.h
         - path: ../Common/src/upgrade_serialization.c
         - path: ../Common/inc/common_reset_contract.h
+        - path: ../Common/inc/common_crash_marker.h
       folders: []
+    - name: Bootloader
+      files: []
+      folders:
+        - name: shared
+          files:
+            - path: ../Bootloader/src/boot_upgrade_meta.c
+            - path: ../Bootloader/inc/boot_upgrade_meta.h
+            - path: ../Bootloader/src/boot_upgrade_indicator.c
+            - path: ../Bootloader/inc/boot_upgrade_indicator.h
+          folders: []
     - name: App
       files: []
       folders:
         - name: src
           files:
             - path: ../App/src/app_main.c
+            - path: ../App/src/app_upgrade_confirm.c
+            - path: ../App/src/app_upgrade_enter_boot.c
+            - path: ../App/inc/app_upgrade_enter_boot.h
+            - path: ../App/inc/app_upgrade_confirm.h
             - path: ../App/src/gd32f4xx_it.c
             - path: ../App/src/freertos_static.c
             - path: ../App/src/app_config.c
@@ -342,6 +357,7 @@ targets:
         - ../BSP
         - ../Middleware
         - ../Common/inc
+        - ../Bootloader/inc
         - ../Middleware/Ringbuffer/inc
         - ../Middleware/Protocol/inc
         - ../Middleware/CLI/inc
@@ -462,7 +478,7 @@ targets:
               isChecked: true
               isStartup: true
               mem:
-                size: "0x20000"
+                size: "0x1ffc0"
                 startAddr: "0x8012000"
               tag: IROM
             - id: 2
@@ -518,6 +534,7 @@ targets:
         - ../Middleware/Ringbuffer/inc
         - ../Middleware/CLI/inc
         - ../Middleware/FlashKV/inc
+        - ../Middleware/FatFs/inc
         - .cmsis/include
         - RTE/_IndustrialEmbedded_Boot
       libList: []

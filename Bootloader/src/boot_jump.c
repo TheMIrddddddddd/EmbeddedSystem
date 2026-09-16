@@ -2,6 +2,7 @@
 #include "gd32f4xx_rcu.h"
 #include "common_flash_layout.h"
 #include "boot_jump.h"
+#include "boot_upgrade_indicator.h"
 
 typedef void (*app_func_t)(void);
 
@@ -19,6 +20,8 @@ void boot_jump_to_app(void)
     {
         return; /* Reset_Handler 不在合法 App 区域或不是 Thumb 地址 */
     }
+
+    boot_upgrade_indicator_shutdown();
 
     /* 关闭全局中断 */
     __disable_irq();

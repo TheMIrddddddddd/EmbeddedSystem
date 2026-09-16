@@ -1575,7 +1575,7 @@ Bootloader 安装完成 → FW_STATE_TRIAL_PENDING → 启动新 APP
 ```c
 typedef struct {
     uint32_t magic;            /* 固定 0x554D4454("UMDT") */
-    uint32_t meta_version;     /* 元数据格式版本 = 1 */
+    uint32_t meta_version;     /* 元数据格式版本 = 2 */
     uint32_t generation;       /* 代数,单调递增,选择有效副本依据 */
     uint8_t  state;            /* firmware_state_t */
     uint8_t  install_stage;    /* install_stage_t */
@@ -1588,12 +1588,13 @@ typedef struct {
     /* 离线失败包隔离 */
     uint32_t failed_package_crc32;
     uint32_t failed_package_version;
-    uint32_t crc32;            /* magic~failed_package_version 的 CRC32(不含 crc32 自身与 commit_marker) */
-    uint32_t commit_marker;    /* 固定 0xA5C3C3A5,最后写入 = 提交完成 */
+    uint32_t request;           /* 0=NONE, 1=ENTER_BOOT */
+    uint32_t crc32;             /* magic~request 的 CRC32,共 64B */
+    uint32_t commit_marker;     /* 固定 0xA5C3C3A5,最后写入 = 提交完成 */
 } upgrade_meta_t;
 
-/* 固定长度校验:AC5 与 GCC 双工具链布局必须一致(头部16B+三映像36B+失败包8B+crc32 4B+marker 4B=68B);更工程化:定义固定 68B 序列化格式,不依赖结构体布局 */
-_Static_assert(sizeof(upgrade_meta_t) == 68, "upgrade_meta_t must be 68 bytes");
+/* 固定长度校验:AC5 与 GCC 双工具链布局必须一致(头部16B+三映像36B+失败包8B+request 4B+crc32 4B+marker 4B=72B);更工程化:定义固定 72B 序列化格式,不依赖结构体布局 */
+_Static_assert(sizeof(upgrade_meta_t) == 72, "upgrade_meta_t must be 72 bytes");
 ```
 
 **写入与选择规则(强制):**
@@ -1601,7 +1602,7 @@ _Static_assert(sizeof(upgrade_meta_t) == 68, "upgrade_meta_t must be 68 bytes");
 | 规则 | 说明 |
 |---|---|
 | 双槽轮换 | 每次写入交替使用 GD25Q40E slot A / slot B(各自独立 4KB sector);写前先擦除目标 sector(另一槽不受影响) |
-| 原子提交 | 先写全部字段(不含 crc32/commit_marker)→ 写 crc32 → **最后写 commit_marker**(0xA5C3C3A5);crc32 计算范围 = magic 至 failed_package_version,不含自身与 commit_marker |
+| 原子提交 | 先写全部字段(不含 crc32/commit_marker)→ 写 crc32 → **最后写 commit_marker**(0xA5C3C3A5);crc32 计算范围 = magic 至 request,共 64B,不含自身与 commit_marker |
 | 掉电恢复 | 启动时扫描两槽:选择"CRC 正确 + commit_marker 有效 + generation 最大"的记录 |
 | 外部 Meta 不可用 | **不得因 SPI/Meta 读取失败无限等待或直接把 App 判为无效:**<br>① 限时重试 SPI/读取两个槽;<br>② 读取 App manifest,验证 magic/manifest CRC/size/image CRC/MSP/复位向量;App 有效 → 尝试重建外部 Meta(active=App manifest,state=IDLE,generation=1,source=NONE),即使重建失败也允许启动 App并记录降级原因;<br>③ App 无效 → 用 Backup manifest 校验并恢复,恢复成功后再尝试重建外部 Meta;<br>④ Backup 也无效 → 驻留安全升级模式,仅等待 0x0501 BEGIN |
 | 无有效槽且外部 Flash 可写 | **不得直接启动旧 App**(掉电可能发生在 App 擦除阶段,App 已不完整):<br>① 读取 App manifest,验证 size/CRC + MSP/复位向量;<br>② App 有效 → 重建并原子提交元数据(active=App manifest,state=IDLE,generation=1,source=NONE,写 slot A 并校验)→ 启动;<br>③ App 无效 → 用 Backup manifest 校验并恢复,再重建元数据;<br>④ Backup 也无效 → 驻留安全升级模式,仅等待 0x0501 BEGIN |
@@ -1922,7 +1923,7 @@ IndustrialEmbedded/
 ├── Common/                     ← Boot/App 共同编译,纯 C、无 RTOS/FatFs/UI/GD32 寄存器依赖
 │   ├── common_flash_layout.h   ← Boot/Legacy保留区/App/Backup/Staging 地址与容量
 │   ├── common_fw_format.c/h    ← V1 固件头/Manifest 逐字段编解码
-│   ├── common_upgrade_meta.c/h ← 68B 元数据固定序列化/CRC/commit 规则
+│   ├── common_upgrade_meta.c/h ← 72B 元数据固定序列化/CRC/commit 规则
 │   ├── common_crc_profile.c/h  ← CRC16/CRC32 参数与测试向量
 │   ├── common_reset_contract.h ← 规范化复位原因/启动确认协议
 │   └── common_upgrade_error.h  ← 升级错误码
